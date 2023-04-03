@@ -189,3 +189,45 @@ impl Scanner {
         &self.tokens
     }
 }
+
+#[cfg(test)]
+#[test]
+fn test_bool() {
+    let source = "true false True False // true // false".to_owned();
+    let mut scanner = Scanner::new(&source);
+    let ttypes: Vec<_> = scanner
+        .scan_tokens()
+        .iter()
+        .map(|t| t._get_type())
+        .collect();
+
+    assert_eq!(ttypes.len(), 5);
+    assert_eq!(ttypes[0], &TokenType::True);
+    assert_eq!(ttypes[1], &TokenType::False);
+    assert_eq!(ttypes[2], &TokenType::Identifier);
+    assert_eq!(ttypes[3], &TokenType::Identifier);
+    assert_eq!(ttypes[4], &TokenType::Eof);
+}
+
+#[test]
+fn test_number() {
+    let source = "100 100.1 100.01 0 100d 100.d 100.".to_owned();
+    let mut scanner = Scanner::new(&source);
+    let ttypes: Vec<_> = scanner
+        .scan_tokens()
+        .iter()
+        .map(|t| t._get_type())
+        .collect();
+
+    assert_eq!(ttypes.len(), 10);
+    assert_eq!(ttypes[0], &TokenType::Number(100.00));
+    assert_eq!(ttypes[1], &TokenType::Number(100.10));
+    assert_eq!(ttypes[2], &TokenType::Number(100.01));
+    assert_eq!(ttypes[3], &TokenType::Number(0.00));
+    assert_eq!(ttypes[4], &TokenType::Number(100.00));
+    assert_eq!(ttypes[5], &TokenType::Identifier);
+    assert_eq!(ttypes[6], &TokenType::Number(100.00));
+    assert_eq!(ttypes[7], &TokenType::Identifier);
+    assert_eq!(ttypes[8], &TokenType::Number(100.00));
+    assert_eq!(ttypes[9], &TokenType::Eof);
+}

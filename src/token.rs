@@ -17,6 +17,10 @@ impl Token {
             literal,
         }
     }
+
+    pub fn _get_type(&self) -> &TokenType {
+        &self.token_type
+    }
 }
 
 impl Display for Token {

@@ -1,184 +1,71 @@
-use logos::Logos;
-use std::{env, fs, process::ExitCode};
+use std::{
+    env, fs,
+    io::{self, BufRead, Write},
+    process::ExitCode,
+};
+
+mod lox_error;
+use lox_error::LoxError;
+mod token;
+use token::{Token, TokenType};
+mod scanner;
+use scanner::Scanner;
 
 fn main() -> Result<(), ExitCode> {
     let args: Vec<String> = env::args().collect();
 
     match args.len() {
         1 => run_prompt(),
-        2 => run_file(&args[0]),
+        2 => run_file(&args[1]),
         _ => {
             println!("Usage: jlox [script]");
-            return Err(ExitCode::from(64));
+            Err(ExitCode::from(64))
+        }
+    }
+}
+
+fn run_file(file_path: &str) -> Result<(), ExitCode> {
+    let contents = fs::read_to_string(file_path).expect("Should have been able to read the file");
+    match run(&contents) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(ExitCode::from(65)),
+    }
+}
+
+/// Goes into prompt-mode. Starts a REPL:
+/// Read a line of input, Evaluate it, Print the result, then Loop
+fn run_prompt() -> Result<(), ExitCode> {
+    // TODO: raw input from user. dont escape backslashes, \n fails
+    print!("> ");
+    io::stdout().flush().expect("Unable to flush stdout");
+    for line in io::stdin().lock().lines() {
+        match line {
+            Ok(line) => {
+                if line.is_empty() {
+                    break;
+                }
+                // TODO: Error is not propagating correctly
+                match run(&line) {
+                    Ok(_) => {}
+                    Err(_) => todo!(),
+                }
+                print!("> ");
+                io::stdout().flush().expect("Unable to flush stdout");
+            }
+            Err(e) => panic!("{e}"),
         }
     }
 
     Ok(())
 }
 
-fn run_file(file_path: &str) {
-    let contents = fs::read_to_string(file_path).expect("Should have been able to read the file");
-    println!("{contents}");
-    // TODO: run the file :)
-}
+fn run(source: &str) -> Result<(), LoxError> {
+    let mut scanner = Scanner::new(source);
+    let tokens = scanner.scan_tokens();
 
-fn run_prompt() {
-    // REPL
-    // Read a line of input, Evaluate it, Print the result, then Loop
-    for line in std::io::stdin().lines() {
-        print!("> ");
-        run(&line.unwrap());
+    for token in tokens {
+        println!("{token:?}")
     }
-}
 
-fn run(source: &str) {
-    let lex = TokenType::lexer(source);
-
-    for token in lex {
-        println!("{token:?}");
-    }
-}
-
-#[allow(dead_code)]
-fn error(line: u32, message: &str) {
-    report(line, "", message);
-}
-
-#[allow(dead_code)]
-fn report(line: u32, _where: &str, message: &str) {
-    eprintln!("[{line}] Error {_where} : {message}");
-}
-
-#[allow(dead_code)]
-#[derive(Logos, Debug, PartialEq)]
-enum TokenType {
-    // Single-character tokens.
-    #[token("(")]
-    LeftParen,
-
-    #[token(")")]
-    RightParen,
-
-    #[token("[")]
-    LeftBrace,
-
-    #[token("]")]
-    RightBrace,
-
-    #[token(",")]
-    Comma,
-
-    #[token(".")]
-    Dot,
-
-    #[token("-")]
-    Minus,
-
-    #[token("+")]
-    Plus,
-
-    #[token(";")]
-    Semicolon,
-
-    #[token("/")]
-    Slash,
-
-    #[token("*")]
-    Star,
-
-    // One or two character tokens.
-    #[token("!")]
-    Bang,
-
-    #[token("!=")]
-    BangEqual,
-
-    #[token("=")]
-    Equal,
-
-    #[token("==")]
-    EqualEqual,
-
-    #[token(">")]
-    Greater,
-
-    #[token(">=")]
-    GreaterEqual,
-
-    #[token("<")]
-    Less,
-
-    #[token("<=")]
-    LessEqual,
-
-    // Literals.
-    //TODO: What would an identifier be
-    #[token("identifier")]
-    Identifier,
-
-    #[regex("[a-zA-Z]+")]
-    String,
-
-    #[regex("[0-9]+", |lex| lex.slice().parse())]
-    Number(u64),
-
-    // Keywords.
-    #[token("and")]
-    And,
-
-    #[token("class")]
-    Class,
-
-    #[token("else")]
-    Else,
-
-    #[token("false")]
-    False,
-
-    #[token("fun")]
-    Fun,
-
-    #[token("for")]
-    For,
-
-    #[token("if")]
-    If,
-
-    #[token("nil")]
-    Nil,
-
-    #[token("or")]
-    Or,
-
-    #[token("print")]
-    Print,
-
-    #[token("return")]
-    Return,
-
-    #[token("super")]
-    Super,
-
-    #[token("this")]
-    This,
-
-    #[token("true")]
-    True,
-
-    #[token("var")]
-    Var,
-
-    #[token("while")]
-    While,
-
-    // TODO: EOF
-    Eof,
-
-    // Logos requires one token variant to handle errors,
-    // it can be named anything you wish.
-    #[error]
-    // We can also use this variant to define whitespace,
-    // or any other matches we wish to skip.
-    #[regex(r"[ \t\n\f]+", logos::skip)]
-    Error,
+    Ok(())
 }

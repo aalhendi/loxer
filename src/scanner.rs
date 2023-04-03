@@ -85,13 +85,26 @@ impl Scanner {
                     }
                 }
                 '/' => {
-                    if let Some((_, c)) = char_indicies.next_if_eq(&(pos + 1, '/')) {
-                        text = text + &c.to_string();
+                    // Comment. ignore lexeme
+                    if char_indicies.next_if_eq(&(pos + 1, '/')).is_some() {
                         for (_pos, next_ch) in char_indicies.by_ref() {
+                            // Consume till newline
                             if next_ch == '\n' {
                                 break;
                             }
-                            text = text + &next_ch.to_string();
+                        }
+                        Ok(None)
+                    } else if char_indicies.next_if_eq(&(pos + 1, '*')).is_some() {
+                        // Block comment. ignore lexeme
+                        let mut is_prev_star = false;
+                        for (_pos, next_ch) in char_indicies.by_ref() {
+                            if next_ch == '*' {
+                                is_prev_star = true;
+                            } else if is_prev_star && next_ch == '/' {
+                                break;
+                            } else {
+                                is_prev_star = false;
+                            }
                         }
                         Ok(None)
                     } else {

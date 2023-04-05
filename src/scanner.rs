@@ -39,7 +39,7 @@ impl Scanner {
         ]);
 
         while let Some((pos, ch)) = char_indicies.next() {
-            let mut text = ch.to_string();
+            let mut lexeme = ch.to_string();
 
             let token_type = match ch {
                 '(' => Ok(Some(TokenType::LeftParen)),
@@ -54,7 +54,7 @@ impl Scanner {
                 '*' => Ok(Some(TokenType::Star)),
                 '!' => {
                     if let Some((_, c)) = char_indicies.next_if_eq(&(pos + 1, '=')) {
-                        text = text + &c.to_string();
+                        lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::BangEqual))
                     } else {
                         Ok(Some(TokenType::Bang))
@@ -62,7 +62,7 @@ impl Scanner {
                 }
                 '=' => {
                     if let Some((_, c)) = char_indicies.next_if_eq(&(pos + 1, '=')) {
-                        text = text + &c.to_string();
+                        lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::EqualEqual))
                     } else {
                         Ok(Some(TokenType::Equal))
@@ -70,7 +70,7 @@ impl Scanner {
                 }
                 '<' => {
                     if let Some((_, c)) = char_indicies.next_if_eq(&(pos + 1, '=')) {
-                        text = text + &c.to_string();
+                        lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::LessEqual))
                     } else {
                         Ok(Some(TokenType::Less))
@@ -78,7 +78,7 @@ impl Scanner {
                 }
                 '>' => {
                     if let Some((_, c)) = char_indicies.next_if_eq(&(pos + 1, '=')) {
-                        text = text + &c.to_string();
+                        lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::GreaterEqual))
                     } else {
                         Ok(Some(TokenType::Greater))
@@ -119,7 +119,7 @@ impl Scanner {
                     Ok(None)
                 }
                 '"' => {
-                    text = String::new(); // reset text to trimp first quote
+                    lexeme = String::new(); // reset text to trimp first quote
                     let mut return_val =
                         Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
                     for (_pos, next_ch) in char_indicies.by_ref() {
@@ -130,58 +130,51 @@ impl Scanner {
                             if next_ch == '\n' {
                                 self.line += 1;
                             }
-                            text += &next_ch.to_string();
+                            lexeme += &next_ch.to_string();
                         }
                     }
                     return_val
                 }
-                _ => {
-                    let mut return_val = Ok(None);
+                _ if ch.is_ascii_digit() => {
+                    while let Some((_, next_ch)) =
+                        char_indicies.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
+                    {
+                        // Keep consuming while next is number
+                        lexeme += &next_ch.to_string();
+                    }
 
-                    if ch.is_numeric() {
+                    // No longer a number char
+                    // Check if next is dot (for decimals)
+                    if let Some((_, next_ch)) = char_indicies.next_if(|(_, c)| *c == '.') {
+                        // Append dot
+                        lexeme += &next_ch.to_string();
+
                         while let Some((_, next_ch)) =
-                            char_indicies.next_if(|(_, next_ch)| next_ch.is_numeric())
+                            char_indicies.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
                         {
                             // Keep consuming while next is number
-                            text += &next_ch.to_string();
+                            lexeme += &next_ch.to_string();
                         }
-
-                        // No longer a number char
-                        // Check if next is dot (for decimals)
-                        if let Some((_, next_ch)) = char_indicies.next_if(|(_, c)| *c == '.') {
-                            // Append dot
-                            text += &next_ch.to_string();
-
-                            while let Some((_, next_ch)) =
-                                char_indicies.next_if(|(_, next_ch)| next_ch.is_numeric())
-                            {
-                                // Keep consuming while next is number
-                                text += &next_ch.to_string();
-                            }
-                        }
-
-                        // TODO: unwrap
-                        return_val = Ok(Some(TokenType::Number(text.parse().unwrap())));
-                    } else if ch.is_alphabetic() {
-                        while let Some((_, next_ch)) =
-                            char_indicies.next_if(|(_, ch)| ch.is_alphanumeric())
-                        {
-                            text += &next_ch.to_string();
-                        }
-
-                        let t_type = keywords.get(&text);
-                        match t_type {
-                            Some(t) => return_val = Ok(Some(t.clone())), // NOTE: is this clone needed?
-                            None => return_val = Ok(Some(TokenType::Identifier)),
-                        }
-                    } else {
-                        // TODO: Dunno. Handle error properly
-                        eprintln!(
-                            "{e}",
-                            e = LoxError::new(self.line, format!("Unexpected Character \"{ch}\""))
-                        );
                     }
-                    return_val
+
+                    // TODO: unwrap
+                    Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
+                }
+                _ if ch.is_ascii_alphabetic() => {
+                    while let Some((_, next_ch)) =
+                        char_indicies.next_if(|(_, ch)| ch.is_ascii_alphanumeric())
+                    {
+                        lexeme += &next_ch.to_string();
+                    }
+
+                    let t_type = keywords.get(&lexeme);
+                    match t_type {
+                        Some(t) => Ok(Some(t.clone())), // NOTE: is this clone needed?
+                        None => Ok(Some(TokenType::Identifier)),
+                    }
+                }
+                _ => {
+                    Err(LoxError::new(self.line, format!("Unexpected Character \"{ch}\"")))
                 }
             };
 
@@ -189,7 +182,7 @@ impl Scanner {
                 Ok(t_type) => {
                     if let Some(t) = t_type {
                         self.tokens
-                            .push(Token::new(t, text.to_owned(), None, self.line))
+                            .push(Token::new(t, lexeme.to_owned(), None, self.line))
                     }
                 }
                 Err(e) => eprintln!("{e}"),

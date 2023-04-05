@@ -1,7 +1,6 @@
 use std::{
     env, fs,
     io::{self, BufRead, Write},
-    process::ExitCode,
 };
 
 mod lox_error;
@@ -11,31 +10,33 @@ use token::{Token, TokenType};
 mod scanner;
 use scanner::Scanner;
 
-fn main() -> Result<(), ExitCode> {
+fn main() {
     let args: Vec<String> = env::args().collect();
 
     match args.len() {
         1 => run_prompt(),
-        2 => run_file(&args[1]),
+        2 => run_file(&args[1]).expect("Unable to run file."),
         _ => {
             println!("Usage: jlox [script]");
-            Err(ExitCode::from(64))
+            // EX_USAGE (64) Command was used incorrectly, e.g., with the wrong number of arguments, a bad flag, bad syntax in a parameter, or whatever.
+            std::process::exit(64)
         }
     }
 }
 
-fn run_file(file_path: &str) -> Result<(), ExitCode> {
-    let contents = fs::read_to_string(file_path).expect("Should have been able to read the file");
-    match run(&contents) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(ExitCode::from(65)),
+fn run_file(file_path: &str) -> std::io::Result<()> {
+    let contents = fs::read_to_string(file_path)?;
+    if run(&contents).is_err() {
+        // EX_DATAERR (65) User input data was incorrect in some way.
+        std::process::exit(65)
     }
+
+    Ok(())
 }
 
 /// Goes into prompt-mode. Starts a REPL:
 /// Read a line of input, Evaluate it, Print the result, then Loop
-fn run_prompt() -> Result<(), ExitCode> {
-    // TODO: raw input from user. dont escape backslashes, \n fails
+fn run_prompt() {
     print!("> ");
     io::stdout().flush().expect("Unable to flush stdout");
     for line in io::stdin().lock().lines() {
@@ -55,8 +56,6 @@ fn run_prompt() -> Result<(), ExitCode> {
             Err(e) => panic!("{e}"),
         }
     }
-
-    Ok(())
 }
 
 fn run(source: &str) -> Result<(), LoxError> {

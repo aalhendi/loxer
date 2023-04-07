@@ -4,12 +4,17 @@ use std::fmt::Display;
 pub struct Token {
     token_type: TokenType,
     lexeme: String,
-    literal: Option<i32>, // TODO: Objects in rust?
-    _line: u32,           // TODO: Line numbers on tokens
+    literal: Option<Literal>,
+    _line: u32, // TODO: Line numbers on tokens
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, lexeme: String, literal: Option<i32>, line: u32) -> Token {
+    pub fn new(
+        token_type: TokenType,
+        lexeme: String,
+        literal: Option<Literal>,
+        line: u32,
+    ) -> Token {
         Token {
             token_type,
             lexeme,
@@ -33,6 +38,13 @@ impl Display for Token {
             literal = self.literal
         )
     }
+}
+
+#[derive(Debug)]
+pub enum Literal {
+    Identifier(String),
+    String(String),
+    Number(f64),
 }
 
 #[derive(Debug, PartialEq, Clone)]

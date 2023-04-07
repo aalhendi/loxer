@@ -1,24 +1,22 @@
 use super::{LoxError, Token, TokenType};
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::Peekable, str::CharIndices};
 
-pub struct Scanner {
-    source: String,
+pub struct Scanner<'a> {
+    source: Peekable<CharIndices<'a>>,
     line: u32,
     tokens: Vec<Token>,
 }
 
-impl Scanner {
+impl Scanner<'_> {
     pub fn new(source: &str) -> Scanner {
         Scanner {
-            source: String::from(source),
+            source: source.char_indices().peekable(),
             line: 1,
             tokens: Vec::new(),
         }
     }
 
     pub fn scan_tokens(&mut self) -> &Vec<Token> {
-        let mut char_indices = self.source.char_indices().peekable();
-
         let keywords: HashMap<String, TokenType> = HashMap::from([
             ("and".to_owned(), TokenType::And),
             ("class".to_owned(), TokenType::Class),
@@ -38,7 +36,7 @@ impl Scanner {
             ("while".to_owned(), TokenType::While),
         ]);
 
-        while let Some((pos, ch)) = char_indices.next() {
+        while let Some((pos, ch)) = self.source.next() {
             let mut lexeme = ch.to_string();
 
             let token_type = match ch {
@@ -53,7 +51,7 @@ impl Scanner {
                 ';' => Ok(Some(TokenType::Semicolon)),
                 '*' => Ok(Some(TokenType::Star)),
                 '!' => {
-                    if let Some((_, c)) = char_indices.next_if_eq(&(pos + 1, '=')) {
+                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::BangEqual))
                     } else {
@@ -61,7 +59,7 @@ impl Scanner {
                     }
                 }
                 '=' => {
-                    if let Some((_, c)) = char_indices.next_if_eq(&(pos + 1, '=')) {
+                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::EqualEqual))
                     } else {
@@ -69,7 +67,7 @@ impl Scanner {
                     }
                 }
                 '<' => {
-                    if let Some((_, c)) = char_indices.next_if_eq(&(pos + 1, '=')) {
+                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::LessEqual))
                     } else {
@@ -77,7 +75,7 @@ impl Scanner {
                     }
                 }
                 '>' => {
-                    if let Some((_, c)) = char_indices.next_if_eq(&(pos + 1, '=')) {
+                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::GreaterEqual))
                     } else {
@@ -86,28 +84,40 @@ impl Scanner {
                 }
                 '/' => {
                     // Comment. ignore lexeme
-                    if char_indices.next_if_eq(&(pos + 1, '/')).is_some() {
-                        for (_pos, next_ch) in char_indices.by_ref() {
+                    if self.source.next_if_eq(&(pos + 1, '/')).is_some() {
+                        for (_pos, next_ch) in self.source.by_ref() {
                             // Consume till newline
                             if next_ch == '\n' {
                                 break;
                             }
                         }
                         Ok(None)
-                    } else if char_indices.next_if_eq(&(pos + 1, '*')).is_some() {
+                    } else if self.source.next_if_eq(&(pos + 1, '*')).is_some() {
                         // Block comment. ignore lexeme
-                        // BUG: termining */ should not have spaces between
-                        let mut is_prev_star = false;
-                        for (_pos, next_ch) in char_indices.by_ref() {
-                            if next_ch == '*' {
-                                is_prev_star = true;
-                            } else if is_prev_star && next_ch == '/' {
-                                break;
-                            } else {
-                                is_prev_star = false;
+                        // TODO: Support nesting block comments
+                        let mut cur = pos + 1 + 1;
+                        loop {
+                            let c1 = self.source.next_if_eq(&(cur, '*'));
+                            let c2 = self.source.next_if_eq(&(cur + 1, '/'));
+                            if c1.is_some() && c2.is_some() {
+                                break Ok(None);
+                            }
+                            let next = self.source.next();
+                            match next {
+                                Some((_, next_ch)) => {
+                                    cur += 1;
+                                    if next_ch == '\n' {
+                                        self.line += 1;
+                                    }
+                                }
+                                None => {
+                                    break Err(LoxError::new(
+                                        self.line,
+                                        "Unterminated block comment".to_owned(),
+                                    ))
+                                }
                             }
                         }
-                        Ok(None)
                     } else {
                         Ok(Some(TokenType::Slash))
                     }
@@ -121,10 +131,10 @@ impl Scanner {
                 }
                 '"' => {
                     // TODO: Handle escape sequences
-                    lexeme = String::new(); // reset text to trimp first quote
+                    lexeme = String::new(); // reset text to trim first quote
                     let mut return_val =
                         Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
-                    for (_pos, next_ch) in char_indices.by_ref() {
+                    for (_pos, next_ch) in self.source.by_ref() {
                         if next_ch == '"' {
                             return_val = Ok(Some(TokenType::String));
                             break;
@@ -139,7 +149,7 @@ impl Scanner {
                 }
                 _ if ch.is_ascii_digit() => {
                     while let Some((_, next_ch)) =
-                        char_indices.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
+                        self.source.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
                     {
                         // Keep consuming while next is number
                         lexeme += &next_ch.to_string();
@@ -147,12 +157,12 @@ impl Scanner {
 
                     // No longer a number char
                     // Check if next is dot (for decimals)
-                    if let Some((_, next_ch)) = char_indices.next_if(|(_, c)| *c == '.') {
+                    if let Some((_, next_ch)) = self.source.next_if(|(_, c)| *c == '.') {
                         // Append dot
                         lexeme += &next_ch.to_string();
 
                         while let Some((_, next_ch)) =
-                            char_indices.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
+                            self.source.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
                         {
                             // Keep consuming while next is number
                             lexeme += &next_ch.to_string();
@@ -164,7 +174,7 @@ impl Scanner {
                 }
                 _ if ch.is_ascii_alphabetic() => {
                     while let Some((_, next_ch)) =
-                        char_indices.next_if(|(_, ch)| ch.is_ascii_alphanumeric())
+                        self.source.next_if(|(_, ch)| ch.is_ascii_alphanumeric())
                     {
                         lexeme += &next_ch.to_string();
                     }
@@ -239,4 +249,18 @@ fn test_number() {
     assert_eq!(ttypes[7], &TokenType::Identifier);
     assert_eq!(ttypes[8], &TokenType::Number(100.00));
     assert_eq!(ttypes[9], &TokenType::Eof);
+}
+
+#[test]
+fn test_comment() {
+    let source = "/* hello */ // world".to_owned();
+    let mut scanner = Scanner::new(&source);
+    let ttypes: Vec<_> = scanner
+        .scan_tokens()
+        .iter()
+        .map(|t| t._get_type())
+        .collect();
+
+    assert_eq!(ttypes.len(), 1);
+    assert_eq!(ttypes[0], &TokenType::Eof);
 }

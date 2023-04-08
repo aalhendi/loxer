@@ -1,8 +1,8 @@
 use super::{LoxError, Token, TokenType};
-use std::{collections::HashMap, iter::Peekable, str::CharIndices};
+use std::{collections::HashMap, iter::Peekable, str::Chars};
 
 pub struct Scanner<'a> {
-    source: Peekable<CharIndices<'a>>,
+    source: Peekable<Chars<'a>>,
     line: u32,
     tokens: Vec<Token>,
 }
@@ -10,7 +10,7 @@ pub struct Scanner<'a> {
 impl Scanner<'_> {
     pub fn new(source: &str) -> Scanner {
         Scanner {
-            source: source.char_indices().peekable(),
+            source: source.chars().peekable(),
             line: 1,
             tokens: Vec::new(),
         }
@@ -36,7 +36,7 @@ impl Scanner<'_> {
             ("while".to_owned(), TokenType::While),
         ]);
 
-        while let Some((pos, ch)) = self.source.next() {
+        while let Some(ch) = self.source.next() {
             let mut lexeme = ch.to_string();
 
             let token_type = match ch {
@@ -51,7 +51,7 @@ impl Scanner<'_> {
                 ';' => Ok(Some(TokenType::Semicolon)),
                 '*' => Ok(Some(TokenType::Star)),
                 '!' => {
-                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
+                    if let Some(c) = self.source.next_if_eq( &'=') {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::BangEqual))
                     } else {
@@ -59,7 +59,7 @@ impl Scanner<'_> {
                     }
                 }
                 '=' => {
-                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
+                    if let Some(c) = self.source.next_if_eq(&'=') {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::EqualEqual))
                     } else {
@@ -67,7 +67,7 @@ impl Scanner<'_> {
                     }
                 }
                 '<' => {
-                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
+                    if let Some(c) = self.source.next_if_eq(&'=') {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::LessEqual))
                     } else {
@@ -75,7 +75,7 @@ impl Scanner<'_> {
                     }
                 }
                 '>' => {
-                    if let Some((_, c)) = self.source.next_if_eq(&(pos + 1, '=')) {
+                    if let Some(c) = self.source.next_if_eq(&'=') {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::GreaterEqual))
                     } else {
@@ -84,15 +84,15 @@ impl Scanner<'_> {
                 }
                 '/' => {
                     // Comment. ignore lexeme
-                    if self.source.next_if_eq(&(pos + 1, '/')).is_some() {
-                        for (_pos, next_ch) in self.source.by_ref() {
+                    if self.source.next_if_eq(&'/').is_some() {
+                        for next_ch in self.source.by_ref() {
                             // Consume till newline
                             if next_ch == '\n' {
                                 break;
                             }
                         }
                         Ok(None)
-                    } else if self.source.next_if_eq(&(pos + 1, '*')).is_some() {
+                    } else if self.source.next_if_eq(&'*').is_some() {
                         // Block comment. ignore lexeme
                         match self.scan_block_comment() {
                             Ok(_) => Ok(None),
@@ -114,7 +114,7 @@ impl Scanner<'_> {
                     lexeme = String::new(); // reset text to trim first quote
                     let mut return_val =
                         Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
-                    for (_pos, next_ch) in self.source.by_ref() {
+                    for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
                             return_val = Ok(Some(TokenType::String));
                             break;
@@ -128,8 +128,8 @@ impl Scanner<'_> {
                     return_val
                 }
                 _ if ch.is_ascii_digit() => {
-                    while let Some((_, next_ch)) =
-                        self.source.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
+                    while let Some(next_ch) =
+                        self.source.next_if(|next_ch| next_ch.is_ascii_digit())
                     {
                         // Keep consuming while next is number
                         lexeme += &next_ch.to_string();
@@ -137,12 +137,12 @@ impl Scanner<'_> {
 
                     // No longer a number char
                     // Check if next is dot (for decimals)
-                    if let Some((_, next_ch)) = self.source.next_if(|(_, c)| *c == '.') {
+                    if let Some(next_ch) = self.source.next_if(|c| *c == '.') {
                         // Append dot
                         lexeme += &next_ch.to_string();
 
-                        while let Some((_, next_ch)) =
-                            self.source.next_if(|(_, next_ch)| next_ch.is_ascii_digit())
+                        while let Some(next_ch) =
+                            self.source.next_if(| next_ch| next_ch.is_ascii_digit())
                         {
                             // Keep consuming while next is number
                             lexeme += &next_ch.to_string();
@@ -153,8 +153,8 @@ impl Scanner<'_> {
                     Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
                 }
                 _ if ch.is_ascii_alphabetic() => {
-                    while let Some((_, next_ch)) =
-                        self.source.next_if(|(_, ch)| ch.is_ascii_alphanumeric())
+                    while let Some(next_ch) =
+                        self.source.next_if(|ch| ch.is_ascii_alphanumeric())
                     {
                         lexeme += &next_ch.to_string();
                     }
@@ -190,17 +190,17 @@ impl Scanner<'_> {
 
     fn scan_block_comment(&mut self) -> Result<(), LoxError> {
         // Consume till loop broken or EOF
-        while let Some((_, next_ch)) = self.source.next() {
+        while let Some(next_ch) = self.source.next() {
             if next_ch == '\n' {
                 self.line += 1;
             } else if next_ch == '/' {
-                if let Some((_, next_next_ch)) = self.source.next() {
+                if let Some(next_next_ch) = self.source.next() {
                     if next_next_ch == '*' {
                         self.scan_block_comment()?;
                     }
                 }
             } else if next_ch == '*' {
-                if let Some((_, next_next_ch)) = self.source.next() {
+                if let Some(next_next_ch) = self.source.next() {
                     if next_next_ch == '/' {
                         return Ok(());
                     }

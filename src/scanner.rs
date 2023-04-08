@@ -94,29 +94,9 @@ impl Scanner<'_> {
                         Ok(None)
                     } else if self.source.next_if_eq(&(pos + 1, '*')).is_some() {
                         // Block comment. ignore lexeme
-                        // TODO: Support nesting block comments
-                        let mut cur = pos + 1 + 1;
-                        loop {
-                            let c1 = self.source.next_if_eq(&(cur, '*'));
-                            let c2 = self.source.next_if_eq(&(cur + 1, '/'));
-                            if c1.is_some() && c2.is_some() {
-                                break Ok(None);
-                            }
-                            let next = self.source.next();
-                            match next {
-                                Some((_, next_ch)) => {
-                                    cur += 1;
-                                    if next_ch == '\n' {
-                                        self.line += 1;
-                                    }
-                                }
-                                None => {
-                                    break Err(LoxError::new(
-                                        self.line,
-                                        "Unterminated block comment".to_owned(),
-                                    ))
-                                }
-                            }
+                        match self.scan_block_comment() {
+                            Ok(_) => Ok(None),
+                            Err(e) => Err(e),
                         }
                     } else {
                         Ok(Some(TokenType::Slash))
@@ -207,6 +187,31 @@ impl Scanner<'_> {
 
         &self.tokens
     }
+
+    fn scan_block_comment(&mut self) -> Result<(), LoxError> {
+        // Consume till loop broken or EOF
+        while let Some((_, next_ch)) = self.source.next() {
+            if next_ch == '\n' {
+                self.line += 1;
+            } else if next_ch == '/' {
+                if let Some((_, next_next_ch)) = self.source.next() {
+                    if next_next_ch == '*' {
+                        self.scan_block_comment()?;
+                    }
+                }
+            } else if next_ch == '*' {
+                if let Some((_, next_next_ch)) = self.source.next() {
+                    if next_next_ch == '/' {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Err(LoxError::new(
+            self.line,
+            "Unterminated block comment".to_owned(),
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -253,7 +258,8 @@ fn test_number() {
 
 #[test]
 fn test_comment() {
-    let source = "/* hello */ // world".to_owned();
+    // TODO: Test always passes because `scanner.scan_tokens()` doesnt error out
+    let source = "/*/* hi */ hello */ // world".to_owned();
     let mut scanner = Scanner::new(&source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()

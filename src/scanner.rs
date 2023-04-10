@@ -17,23 +17,23 @@ impl Scanner<'_> {
     }
 
     pub fn scan_tokens(&mut self) -> &Vec<Token> {
-        let keywords: HashMap<String, TokenType> = HashMap::from([
-            ("and".to_owned(), TokenType::And),
-            ("class".to_owned(), TokenType::Class),
-            ("else".to_owned(), TokenType::Else),
-            ("false".to_owned(), TokenType::False),
-            ("for".to_owned(), TokenType::For),
-            ("fun".to_owned(), TokenType::Fun),
-            ("if".to_owned(), TokenType::If),
-            ("nil".to_owned(), TokenType::Nil),
-            ("or".to_owned(), TokenType::Or),
-            ("print".to_owned(), TokenType::Print),
-            ("return".to_owned(), TokenType::Return),
-            ("super".to_owned(), TokenType::Super),
-            ("this".to_owned(), TokenType::This),
-            ("true".to_owned(), TokenType::True),
-            ("var".to_owned(), TokenType::Var),
-            ("while".to_owned(), TokenType::While),
+        let keywords: HashMap<&str, TokenType> = HashMap::from([
+            ("and", TokenType::And),
+            ("class", TokenType::Class),
+            ("else", TokenType::Else),
+            ("false", TokenType::False),
+            ("for", TokenType::For),
+            ("fun", TokenType::Fun),
+            ("if", TokenType::If),
+            ("nil", TokenType::Nil),
+            ("or", TokenType::Or),
+            ("print", TokenType::Print),
+            ("return", TokenType::Return),
+            ("super", TokenType::Super),
+            ("this", TokenType::This),
+            ("true", TokenType::True),
+            ("var", TokenType::Var),
+            ("while", TokenType::While),
         ]);
 
         while let Some(ch) = self.source.next() {
@@ -51,7 +51,7 @@ impl Scanner<'_> {
                 ';' => Ok(Some(TokenType::Semicolon)),
                 '*' => Ok(Some(TokenType::Star)),
                 '!' => {
-                    if let Some(c) = self.source.next_if_eq( &'=') {
+                    if let Some(c) = self.source.next_if_eq(&'=') {
                         lexeme = lexeme + &c.to_string();
                         Ok(Some(TokenType::BangEqual))
                     } else {
@@ -116,7 +116,7 @@ impl Scanner<'_> {
                         Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
                     for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
-                            return_val = Ok(Some(TokenType::String));
+                            return_val = Ok(Some(TokenType::String(lexeme.clone())));
                             break;
                         } else {
                             if next_ch == '\n' {
@@ -142,7 +142,7 @@ impl Scanner<'_> {
                         lexeme += &next_ch.to_string();
 
                         while let Some(next_ch) =
-                            self.source.next_if(| next_ch| next_ch.is_ascii_digit())
+                            self.source.next_if(|next_ch| next_ch.is_ascii_digit())
                         {
                             // Keep consuming while next is number
                             lexeme += &next_ch.to_string();
@@ -153,16 +153,14 @@ impl Scanner<'_> {
                     Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
                 }
                 _ if ch.is_ascii_alphabetic() => {
-                    while let Some(next_ch) =
-                        self.source.next_if(|ch| ch.is_ascii_alphanumeric())
-                    {
+                    while let Some(next_ch) = self.source.next_if(|ch| ch.is_ascii_alphanumeric()) {
                         lexeme += &next_ch.to_string();
                     }
 
-                    let t_type = keywords.get(&lexeme);
+                    let t_type = keywords.get(&lexeme.as_str());
                     match t_type {
                         Some(t) => Ok(Some(t.clone())), // NOTE: is this clone needed?
-                        None => Ok(Some(TokenType::Identifier)),
+                        None => Ok(Some(TokenType::Identifier(lexeme.clone()))),
                     }
                 }
                 _ => Err(LoxError::new(
@@ -175,7 +173,7 @@ impl Scanner<'_> {
                 Ok(t_type) => {
                     if let Some(t) = t_type {
                         self.tokens
-                            .push(Token::new(t, lexeme.to_owned(), None, self.line))
+                            .push(Token::new(t, lexeme.to_owned(), self.line))
                     }
                 }
                 Err(e) => eprintln!("{e}"),
@@ -183,7 +181,7 @@ impl Scanner<'_> {
         }
 
         self.tokens
-            .push(Token::new(TokenType::Eof, "".to_owned(), None, self.line));
+            .push(Token::new(TokenType::Eof, "".to_owned(), self.line));
 
         &self.tokens
     }
@@ -228,8 +226,8 @@ fn test_bool() {
     assert_eq!(ttypes.len(), 5);
     assert_eq!(ttypes[0], &TokenType::True);
     assert_eq!(ttypes[1], &TokenType::False);
-    assert_eq!(ttypes[2], &TokenType::Identifier);
-    assert_eq!(ttypes[3], &TokenType::Identifier);
+    assert_eq!(ttypes[2], &TokenType::Identifier("True".to_owned()));
+    assert_eq!(ttypes[3], &TokenType::Identifier("False".to_owned()));
     assert_eq!(ttypes[4], &TokenType::Eof);
 }
 
@@ -249,9 +247,9 @@ fn test_number() {
     assert_eq!(ttypes[2], &TokenType::Number(100.01));
     assert_eq!(ttypes[3], &TokenType::Number(0.00));
     assert_eq!(ttypes[4], &TokenType::Number(100.00));
-    assert_eq!(ttypes[5], &TokenType::Identifier);
+    assert_eq!(ttypes[5], &TokenType::Identifier("d".to_owned()));
     assert_eq!(ttypes[6], &TokenType::Number(100.00));
-    assert_eq!(ttypes[7], &TokenType::Identifier);
+    assert_eq!(ttypes[7], &TokenType::Identifier("d".to_owned()));
     assert_eq!(ttypes[8], &TokenType::Number(100.00));
     assert_eq!(ttypes[9], &TokenType::Eof);
 }

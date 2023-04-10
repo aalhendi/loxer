@@ -9,6 +9,7 @@ mod token;
 use token::{Token, TokenType};
 mod scanner;
 use scanner::Scanner;
+mod expr;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

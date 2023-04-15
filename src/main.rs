@@ -10,6 +10,7 @@ use token::{Token, TokenType};
 mod scanner;
 use scanner::Scanner;
 mod expr;
+mod parser;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -62,6 +63,9 @@ fn run_prompt() {
 fn run(source: &str) -> Result<(), LoxError> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens();
+    let mut parser = parser::Parser::new(tokens.to_vec());
+    let expression = parser.parse();
+    println!("{expression}");
 
     for token in tokens {
         println!("{token:?}")

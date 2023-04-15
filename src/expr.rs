@@ -71,10 +71,7 @@ impl BinaryExpr {
     }
 
     fn to_rpn(&self) -> String {
-        format!(
-            "{}",
-            walk_rpn(&self.operator.lexeme, &[&self.left, &self.right])
-        )
+        walk_rpn(&self.operator.lexeme, &[&self.left, &self.right])
     }
 }
 
@@ -98,7 +95,7 @@ impl GroupingExpr {
     }
 
     fn to_rpn(&self) -> String {
-        format!("{}", walk_rpn("group", &[&self.expression]))
+        walk_rpn("group", &[&self.expression])
     }
 }
 
@@ -135,7 +132,7 @@ impl UnaryExpr {
     }
 
     fn to_rpn(&self) -> String {
-        format!("{}", walk_rpn(&self.operator.lexeme, &[&self.right]))
+        walk_rpn(&self.operator.lexeme, &[&self.right])
     }
 }
 

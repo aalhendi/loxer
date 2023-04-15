@@ -116,7 +116,8 @@ impl Scanner<'_> {
                         Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
                     for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
-                            return_val = Ok(Some(TokenType::String(lexeme.clone())));
+                            // return_val = Ok(Some(TokenType::String(lexeme.clone())));
+                            return_val = Ok(Some(TokenType::String));
                             break;
                         } else {
                             if next_ch == '\n' {
@@ -150,7 +151,8 @@ impl Scanner<'_> {
                     }
 
                     // TODO: unwrap
-                    Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
+                    // Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
+                    Ok(Some(TokenType::Number))
                 }
                 _ if ch.is_ascii_alphabetic() => {
                     while let Some(next_ch) = self.source.next_if(|ch| ch.is_ascii_alphanumeric()) {
@@ -220,15 +222,20 @@ fn test_bool() {
     let ttypes: Vec<_> = scanner
         .scan_tokens()
         .iter()
-        .map(|t| t._get_type())
+        .map(|t| &t.token_type)
         .collect();
 
     assert_eq!(ttypes.len(), 5);
-    assert_eq!(ttypes[0], &TokenType::True);
-    assert_eq!(ttypes[1], &TokenType::False);
-    assert_eq!(ttypes[2], &TokenType::Identifier("True".to_owned()));
-    assert_eq!(ttypes[3], &TokenType::Identifier("False".to_owned()));
-    assert_eq!(ttypes[4], &TokenType::Eof);
+    assert_eq!(
+        ttypes,
+        vec![
+            &TokenType::True,
+            &TokenType::False,
+            &TokenType::Identifier("True".to_owned()),
+            &TokenType::Identifier("False".to_owned()),
+            &TokenType::Eof,
+        ]
+    );
 }
 
 #[test]
@@ -238,20 +245,25 @@ fn test_number() {
     let ttypes: Vec<_> = scanner
         .scan_tokens()
         .iter()
-        .map(|t| t._get_type())
+        .map(|t| (&t.token_type, t.lexeme.as_str()))
         .collect();
 
     assert_eq!(ttypes.len(), 10);
-    assert_eq!(ttypes[0], &TokenType::Number(100.00));
-    assert_eq!(ttypes[1], &TokenType::Number(100.10));
-    assert_eq!(ttypes[2], &TokenType::Number(100.01));
-    assert_eq!(ttypes[3], &TokenType::Number(0.00));
-    assert_eq!(ttypes[4], &TokenType::Number(100.00));
-    assert_eq!(ttypes[5], &TokenType::Identifier("d".to_owned()));
-    assert_eq!(ttypes[6], &TokenType::Number(100.00));
-    assert_eq!(ttypes[7], &TokenType::Identifier("d".to_owned()));
-    assert_eq!(ttypes[8], &TokenType::Number(100.00));
-    assert_eq!(ttypes[9], &TokenType::Eof);
+    assert_eq!(
+        ttypes,
+        vec![
+            (&TokenType::Number, "100"),
+            (&TokenType::Number, "100.1"),
+            (&TokenType::Number, "100.01"),
+            (&TokenType::Number, "0"),
+            (&TokenType::Number, "100"),
+            (&TokenType::Identifier("d".to_owned()), "d"),
+            (&TokenType::Number, "100."),
+            (&TokenType::Identifier("d".to_owned()), "d"),
+            (&TokenType::Number, "100."),
+            (&TokenType::Eof, ""),
+        ]
+    );
 }
 
 #[test]
@@ -262,7 +274,7 @@ fn test_comment() {
     let ttypes: Vec<_> = scanner
         .scan_tokens()
         .iter()
-        .map(|t| t._get_type())
+        .map(|t| &t.token_type)
         .collect();
 
     assert_eq!(ttypes.len(), 1);

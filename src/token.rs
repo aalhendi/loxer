@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
-    token_type: TokenType,
+    pub token_type: TokenType,
     pub lexeme: String,
-    _line: u32, // TODO: Line numbers on tokens
+    pub line: u32, // TODO: Line numbers on tokens
 }
 
 impl Token {
@@ -12,12 +12,8 @@ impl Token {
         Token {
             token_type,
             lexeme,
-            _line: line,
+            line,
         }
-    }
-
-    pub fn _get_type(&self) -> &TokenType {
-        &self.token_type
     }
 }
 
@@ -57,8 +53,10 @@ pub enum TokenType {
     LessEqual,
     Identifier(String),
     // --- Literals. ---
-    String(String),
-    Number(f64),
+    // String(String),
+    String,
+    // Number(f64),
+    Number,
     // --- Keywords. ---
     And,
     Class,

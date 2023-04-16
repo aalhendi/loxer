@@ -1,183 +1,181 @@
 use crate::{
     expr::{BinaryExpr, Expr, GroupingExpr, Literal, UnaryExpr},
+    lox_error::LoxError,
     token::{Token, TokenType},
 };
 
-pub struct Parser {
-    tokens: Vec<Token>,
-    current: usize,
+/// Recursive decent parser
+pub struct Parser<'a> {
+    tokens: std::iter::Peekable<std::slice::Iter<'a, Token>>,
 }
 
-// TODO: Iterators
-impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+impl<'a> Parser<'a> {
+    pub fn new(tokens: &'a [Token]) -> Self {
+        Self {
+            tokens: tokens.iter().peekable(),
+        }
     }
 
-    fn expression(&mut self) -> Expr {
+    fn expression(&mut self) -> Result<Expr, LoxError> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Expr {
-        let mut expr = self.comparison();
+    fn equality(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.comparison()?;
 
-        while self.matches(&[TokenType::BangEqual, TokenType::EqualEqual]) {
-            let operator = self.previous();
-            let right = self.comparison();
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator, right)));
+        while let Some(t) = self.tokens.next_if(|t| {
+            t.token_type == TokenType::BangEqual || t.token_type == TokenType::EqualEqual
+        }) {
+            let operator = t;
+            let right = self.comparison()?;
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
         }
-        expr
+        Ok(expr)
     }
 
-    fn matches(&mut self, types: &[TokenType]) -> bool {
-        for ttype in types.iter() {
-            if self.check(ttype) {
-                self.advance();
-                return true;
-            }
+    fn comparison(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.term()?;
+
+        while let Some(t) = self.tokens.next_if(|t| {
+            t.token_type == TokenType::Greater
+                || t.token_type == TokenType::GreaterEqual
+                || t.token_type == TokenType::Less
+                || t.token_type == TokenType::LessEqual
+        }) {
+            let operator = t;
+            let right = self.comparison()?;
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
         }
-        false
+
+        Ok(expr)
     }
 
-    fn check(&self, ttype: &TokenType) -> bool {
-        if self.is_at_end() {
-            return false;
+    fn term(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.factor()?;
+
+        while let Some(t) = self
+            .tokens
+            .next_if(|t| t.token_type == TokenType::Minus || t.token_type == TokenType::Plus)
+        {
+            let operator = t;
+            let right = self.comparison()?;
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
         }
-        &self.peek().token_type == ttype
+        Ok(expr)
     }
 
-    fn advance(&mut self) -> Token {
-        if !self.is_at_end() {
-            self.current += 1;
+    fn factor(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.unary()?;
+
+        while let Some(t) = self
+            .tokens
+            .next_if(|t| t.token_type == TokenType::Slash || t.token_type == TokenType::Star)
+        {
+            let operator = t;
+            let right = self.comparison()?;
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
         }
-        self.previous()
+        Ok(expr)
     }
 
-    fn is_at_end(&self) -> bool {
-        let t = self.peek();
-        t.token_type == TokenType::Eof
-    }
-
-    // TODO: Unwraps
-    fn peek(&self) -> Token {
-        self.tokens.get(self.current).unwrap().clone()
-    }
-
-    fn previous(&self) -> Token {
-        self.tokens.get(self.current - 1).unwrap().clone()
-    }
-
-    fn comparison(&mut self) -> Expr {
-        let mut expr = self.term();
-
-        while self.matches(&[
-            TokenType::Greater,
-            TokenType::GreaterEqual,
-            TokenType::Less,
-            TokenType::LessEqual,
-        ]) {
-            let operator = self.previous();
-            let right = self.term();
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator, right)));
-        }
-        expr
-    }
-
-    fn term(&mut self) -> Expr {
-        let mut expr = self.factor();
-
-        while self.matches(&[TokenType::Minus, TokenType::Plus]) {
-            let operator = self.previous();
-            let right = self.factor();
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator, right)));
-        }
-        expr
-    }
-
-    fn factor(&mut self) -> Expr {
-        let mut expr = self.unary();
-
-        while self.matches(&[TokenType::Slash, TokenType::Star]) {
-            let operator = self.previous();
-            let right = self.unary();
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator, right)));
-        }
-        expr
-    }
-
-    fn unary(&mut self) -> Expr {
-        if self.matches(&[TokenType::Bang, TokenType::Minus]) {
-            let operator = self.previous();
-            let right = self.unary();
-            return Expr::Unary(Box::new(UnaryExpr::new(operator, right)));
+    fn unary(&mut self) -> Result<Expr, LoxError> {
+        if let Some(t) = self
+            .tokens
+            .next_if(|t| t.token_type == TokenType::Bang || t.token_type == TokenType::Minus)
+        {
+            let operator = t;
+            let right = self.unary()?;
+            return Ok(Expr::Unary(Box::new(UnaryExpr::new(
+                operator.clone(),
+                right,
+            ))));
         }
         self.primary()
     }
 
-    fn primary(&mut self) -> Expr {
-        if self.matches(&[TokenType::False]) {
-            return Expr::Literal(Literal::Boolean(false));
-        } else if self.matches(&[TokenType::True]) {
-            return Expr::Literal(Literal::Boolean(true));
-        } else if self.matches(&[TokenType::Nil]) {
-            return Expr::Literal(Literal::Nil);
-        } else if self.matches(&[TokenType::Number]) {
-            return Expr::Literal(Literal::Number(self.previous().lexeme.parse().unwrap()));
-        } else if self.matches(&[TokenType::String]) {
-            return Expr::Literal(Literal::String(self.previous().lexeme));
-        }
-
-        if self.matches(&[TokenType::LeftParen]) {
-            let expr = self.expression();
-            self.consume(&TokenType::RightParen, "Expect ')' after expression.");
-            return Expr::Grouping(Box::new(GroupingExpr::new(expr)));
-        }
-
-        let t = self.peek();
-        panic!("{t:?} expected expression");
-    }
-
-    // TODO: Error propagation
-    fn consume(&mut self, ttype: &TokenType, message: &str) -> Token {
-        if self.check(ttype) {
-            return self.advance();
-        }
-
-        // self.error(self.peek(), message);
-        let token = self.peek();
-        if token.token_type == TokenType::Eof {
-            // TODO: eprintln rather than panic?
-            panic!("{} at end {}", token.line, message)
+    // TODO: Error propagation and handle panics.
+    fn primary(&mut self) -> Result<Expr, LoxError> {
+        if let Some(t) = self.tokens.next() {
+            match &t.token_type {
+                TokenType::False => Ok(Expr::Literal(Literal::Boolean(false))),
+                TokenType::True => Ok(Expr::Literal(Literal::Boolean(true))),
+                TokenType::Nil => Ok(Expr::Literal(Literal::Nil)),
+                TokenType::String(s) => Ok(Expr::Literal(Literal::String(s.to_string()))),
+                TokenType::Number(n) => Ok(Expr::Literal(Literal::Number(*n))),
+                TokenType::LeftParen => {
+                    let expr = self.expression()?;
+                    if let Some(t) = self.tokens.peek() {
+                        if t.token_type == TokenType::RightParen {
+                            self.tokens.next();
+                        } else if t.token_type == TokenType::Eof {
+                            return Err(LoxError::new(
+                                t.line,
+                                "at end Expect ')' after expression".to_owned(),
+                            ));
+                        } else {
+                            return Err(LoxError::new(
+                                t.line,
+                                format!("at {}. Expect ')' after expression", t.lexeme),
+                            ));
+                        }
+                    } // TODO: Else?
+                    Ok(Expr::Grouping(Box::new(GroupingExpr::new(expr))))
+                }
+                _ => match self.tokens.peek() {
+                    Some(t) => Err(LoxError::new(t.line, "expected expression".to_owned())),
+                    None => Err(LoxError::new(
+                        t.line,
+                        "EOF, something unterminated".to_owned(),
+                    )), // TODO: Better error msg
+                },
+            }
         } else {
-            panic!("{} at {} {}", token.line, token.lexeme, message)
+            Err(LoxError::new(0, "ran out of tokens lol".to_owned()))
         }
     }
-
-    // fn error(&self, token: Token, message: &str) {
-    //     if token.token_type == TokenType::Eof {
-    //         panic!("{} at end {}", token._line, message)
-    //     } else {
-    //         panic!("{} at {} {}", token._line, token.lexeme, message)
-    //     }
-    // }
 
     #[allow(dead_code)]
     fn sync(&mut self) {
-        self.advance();
-
-        while !self.is_at_end() {
-            if self.previous().token_type == TokenType::Semicolon {
+        while let Some(t) = self.tokens.next() {
+            if t.token_type == TokenType::Semicolon {
                 return;
-            }
-            match self.peek().token_type {
-                _ => {}
-            }
+            };
 
-            self.advance();
+            match self.tokens.peek() {
+                Some(t) => match t.token_type {
+                    TokenType::Class => return,
+                    TokenType::Fun => return,
+                    TokenType::Var => return,
+                    TokenType::For => return,
+                    TokenType::If => return,
+                    TokenType::While => return,
+                    TokenType::Print => return,
+                    TokenType::Return => return,
+                    _ => {}
+                },
+                None => panic!("Was looking for semicolon... ran out of tokens"),
+            }
         }
     }
 
-    pub fn parse(&mut self) -> Expr {
+    pub fn parse(&mut self) -> Result<Expr, LoxError> {
         self.expression()
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn test_parser() {
+    let mut scanner = crate::scanner::Scanner::new(r#"(!"hello" -3 + true) != "hi""#);
+    let tokens = scanner.scan_tokens().to_vec();
+    let mut parser = Parser::new(&tokens);
+    let expression = parser.parse();
+    assert!(expression.is_ok());
+    match expression {
+        Ok(e) => assert_eq!(
+            e.to_string(),
+            r#"(!= (group (- (! "hello") (+ 3 true))) "hi")"#
+        ),
+        Err(_) => {}
     }
 }

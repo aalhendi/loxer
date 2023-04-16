@@ -53,10 +53,8 @@ pub enum TokenType {
     LessEqual,
     Identifier(String),
     // --- Literals. ---
-    // String(String),
-    String,
-    // Number(f64),
-    Number,
+    String(String),
+    Number(f64),
     // --- Keywords. ---
     And,
     Class,

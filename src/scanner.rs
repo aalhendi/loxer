@@ -116,8 +116,7 @@ impl Scanner<'_> {
                         Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
                     for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
-                            // return_val = Ok(Some(TokenType::String(lexeme.clone())));
-                            return_val = Ok(Some(TokenType::String));
+                            return_val = Ok(Some(TokenType::String(lexeme.clone())));
                             break;
                         } else {
                             if next_ch == '\n' {
@@ -151,8 +150,7 @@ impl Scanner<'_> {
                     }
 
                     // TODO: unwrap
-                    // Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
-                    Ok(Some(TokenType::Number))
+                    Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
                 }
                 _ if ch.is_ascii_alphabetic() => {
                     while let Some(next_ch) = self.source.next_if(|ch| ch.is_ascii_alphanumeric()) {
@@ -245,23 +243,23 @@ fn test_number() {
     let ttypes: Vec<_> = scanner
         .scan_tokens()
         .iter()
-        .map(|t| (&t.token_type, t.lexeme.as_str()))
+        .map(|t| &t.token_type)
         .collect();
-
+    
     assert_eq!(ttypes.len(), 10);
     assert_eq!(
         ttypes,
         vec![
-            (&TokenType::Number, "100"),
-            (&TokenType::Number, "100.1"),
-            (&TokenType::Number, "100.01"),
-            (&TokenType::Number, "0"),
-            (&TokenType::Number, "100"),
-            (&TokenType::Identifier("d".to_owned()), "d"),
-            (&TokenType::Number, "100."),
-            (&TokenType::Identifier("d".to_owned()), "d"),
-            (&TokenType::Number, "100."),
-            (&TokenType::Eof, ""),
+            &TokenType::Number(100.00),
+            &TokenType::Number(100.10),
+            &TokenType::Number(100.01),
+            &TokenType::Number(0.00),
+            &TokenType::Number(100.00),
+            &TokenType::Identifier("d".to_owned()),
+            &TokenType::Number(100.00),
+            &TokenType::Identifier("d".to_owned()),
+            &TokenType::Number(100.00),
+            &TokenType::Eof,
         ]
     );
 }

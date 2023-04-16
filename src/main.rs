@@ -50,7 +50,7 @@ fn run_prompt() {
                 // TODO: Error is not propagating correctly
                 match run(&line) {
                     Ok(_) => {}
-                    Err(_) => todo!(),
+                    Err(e) => eprintln!("{e}"),
                 }
                 print!("> ");
                 io::stdout().flush().expect("Unable to flush stdout");
@@ -62,9 +62,9 @@ fn run_prompt() {
 
 fn run(source: &str) -> Result<(), LoxError> {
     let mut scanner = Scanner::new(source);
-    let tokens = scanner.scan_tokens();
-    let mut parser = parser::Parser::new(tokens.to_vec());
-    let expression = parser.parse();
+    let tokens = scanner.scan_tokens().to_vec();
+    let mut parser = parser::Parser::new(&tokens);
+    let expression = parser.parse()?;
     println!("{expression}");
 
     for token in tokens {

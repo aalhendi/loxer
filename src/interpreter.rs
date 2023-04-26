@@ -59,8 +59,20 @@ impl Interpreter {
                             s1.push_str(&s2);
                             Ok(Literal::String(s1))
                         }
+                        (Literal::String(s), Literal::Number(n)) => {
+                            Ok(Literal::String(format!("{s}{n}")))
+                        }
+                        (Literal::Number(n), Literal::String(s)) => {
+                            Ok(Literal::String(format!("{n}{s}")))
+                        }
                         (Literal::Number(n1), Literal::Number(n2)) => Ok(Literal::Number(n1 + n2)),
-                        _ => Err(LoxError::new(e.operator.line, "Operands must be ")),
+                        _ => Err(LoxError::new(
+                            e.operator.line,
+                            &format!(
+                                "Operands must both be numbers. Operator: `{lexeme}`",
+                                lexeme = e.operator.lexeme
+                            ),
+                        )),
                     },
                     _ => unreachable!("Invalid operator?"),
                 }

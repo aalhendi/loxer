@@ -29,11 +29,14 @@ fn main() {
 
 fn run_file(file_path: &str) -> std::io::Result<()> {
     let contents = fs::read_to_string(file_path)?;
-    if run(&contents).is_ok() {
-        return Ok(());
+    if let Err((e, code)) = run(&contents) {
+        // EX_DATAERR (65) User input data was incorrect in some way.
+        // EX_SOFTWARE (70) Internal software error. Limited to non-OS errors.
+        eprintln!("{e}");
+        std::process::exit(code);
     }
 
-    Ok(()) // TODO: handle err case.
+    Ok(())
 }
 
 /// Goes into prompt-mode. Starts a REPL:
@@ -48,9 +51,8 @@ fn run_prompt() {
                     break;
                 }
                 // TODO: Error is not propagating correctly
-                match run(&line) {
-                    Ok(_) => {}
-                    Err(e) => eprintln!("{e}"),
+                if let Err((e, _code)) = run(&line) {
+                    eprintln!("{e}")
                 }
                 print!("> ");
                 io::stdout().flush().expect("Unable to flush stdout");
@@ -60,21 +62,20 @@ fn run_prompt() {
     }
 }
 
-fn run(source: &str) -> Result<(), LoxError> {
+/// On error, returns an instance of LoxError and an ExitCode
+fn run(source: &str) -> Result<(), (LoxError, i32)> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().to_vec();
     let mut parser = parser::Parser::new(&tokens);
     let expression = match parser.parse() {
         Ok(e) => e,
-        // EX_DATAERR (65) User input data was incorrect in some way.
-        Err(_) => std::process::exit(65),
+        Err(err) => return Err((err, 65i32)),
     };
     let interpreter = interpreter::Interpreter::new();
     match interpreter.interpret(expression) {
         Ok(_) => {}
-        // EX_SOFTWARE (70) Internal software error. Limited to non-OS errors.
-        Err(_) => std::process::exit(70),
-    }
+        Err(err) => return Err((err, 70)),
+    };
 
     Ok(())
 }

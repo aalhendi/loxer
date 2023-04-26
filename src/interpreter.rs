@@ -60,10 +60,7 @@ impl Interpreter {
                             Ok(Literal::String(s1))
                         }
                         (Literal::Number(n1), Literal::Number(n2)) => Ok(Literal::Number(n1 + n2)),
-                        _ => Err(LoxError::new(
-                            e.operator.line,
-                            "Operands must be ",
-                        )),
+                        _ => Err(LoxError::new(e.operator.line, "Operands must be ")),
                     },
                     _ => unreachable!("Invalid operator?"),
                 }
@@ -95,7 +92,10 @@ impl Interpreter {
             (Literal::Number(n1), Literal::Number(n2)) => Ok((n1, n2)),
             _ => Err(LoxError::new(
                 op.line,
-                &format!("Operands must be numbers. Operator: `{lexeme}`", lexeme = op.lexeme),
+                &format!(
+                    "Operands must be numbers. Operator: `{lexeme}`",
+                    lexeme = op.lexeme
+                ),
             )),
         }
     }
@@ -115,6 +115,61 @@ impl Interpreter {
             (Literal::Nil, Literal::Nil) => true,
             (Literal::Nil, _) => false,
             (left, right) => left == right,
+        }
+    }
+}
+
+#[cfg(test)]
+
+mod tests {
+    use crate::{
+        expr::{BinaryExpr, Expr, Literal},
+        token::{Token, TokenType},
+    };
+
+    use super::Interpreter;
+
+    #[test]
+    fn test_multiplication() {
+        let left = Expr::Literal(Literal::Number(2.0));
+        let right = Expr::Literal(Literal::Number(8.0));
+        let e = Expr::Binary(Box::new(BinaryExpr::new(
+            left,
+            Token::new(TokenType::Star, "*".to_owned(), 1),
+            right,
+        )));
+
+        let interpreter = Interpreter::new();
+        let result = interpreter.evaluate(e);
+        match result {
+            Ok(e) => assert_eq!(e, Literal::Number(16.0)),
+            Err(_) => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_precedence() {
+        let left = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(1.0)),
+            Token::new(TokenType::Plus, "+".to_owned(), 1),
+            Expr::Literal(Literal::Number(2.0)),
+        )));
+        let right = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(4.0)),
+            Token::new(TokenType::Minus, "-".to_owned(), 1),
+            Expr::Literal(Literal::Number(5.0)),
+        )));
+        let e = Expr::Binary(Box::new(BinaryExpr::new(
+            left,
+            Token::new(TokenType::Star, "*".to_owned(), 1),
+            right,
+        )));
+
+        let interpreter = Interpreter::new();
+        let result = interpreter.evaluate(e);
+        match result {
+            Ok(e) => assert_eq!(e, Literal::Number(-3.0)),
+            Err(_) => unreachable!(),
         }
     }
 }

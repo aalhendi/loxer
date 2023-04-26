@@ -43,7 +43,7 @@ impl<'a> Parser<'a> {
                 || t.token_type == TokenType::LessEqual
         }) {
             let operator = t;
-            let right = self.comparison()?;
+            let right = self.term()?;
             expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
 
@@ -58,7 +58,7 @@ impl<'a> Parser<'a> {
             .next_if(|t| t.token_type == TokenType::Minus || t.token_type == TokenType::Plus)
         {
             let operator = t;
-            let right = self.comparison()?;
+            let right = self.factor()?;
             expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
             .next_if(|t| t.token_type == TokenType::Slash || t.token_type == TokenType::Star)
         {
             let operator = t;
-            let right = self.comparison()?;
+            let right = self.unary()?;
             expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
@@ -85,10 +85,8 @@ impl<'a> Parser<'a> {
         {
             let operator = t;
             let right = self.unary()?;
-            return Ok(Expr::Unary(Box::new(UnaryExpr::new(
-                operator.clone(),
-                right,
-            ))));
+            let e = Expr::Unary(Box::new(UnaryExpr::new(operator.clone(), right)));
+            return Ok(e);
         }
         self.primary()
     }
@@ -123,10 +121,7 @@ impl<'a> Parser<'a> {
                 }
                 _ => match self.tokens.peek() {
                     Some(t) => Err(LoxError::new(t.line, "expected expression")),
-                    None => Err(LoxError::new(
-                        t.line,
-                        "EOF, something unterminated",
-                    )), // TODO: Better error msg
+                    None => Err(LoxError::new(t.line, "EOF, something unterminated")), // TODO: Better error msg
                 },
             }
         } else {
@@ -174,7 +169,19 @@ fn test_parser() {
     if let Ok(e) = expression {
         assert_eq!(
             e.to_string(),
-            r#"(!= (group (- (! "hello") (+ 3 true))) "hi")"#
+            r#"(!= (group (+ (- (! "hello") 3) true)) "hi")"#
         )
+    }
+}
+
+#[test]
+fn test_precedence() {
+    let mut scanner = crate::scanner::Scanner::new(r#"1+2*4-5"#);
+    let tokens = scanner.scan_tokens().to_vec();
+    let mut parser = Parser::new(&tokens);
+    let expression = parser.parse();
+    assert!(expression.is_ok());
+    if let Ok(e) = expression {
+        assert_eq!(e.to_string(), r#"(- (+ 1 (* 2 4)) 5)"#)
     }
 }

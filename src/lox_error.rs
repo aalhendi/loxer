@@ -6,8 +6,11 @@ pub struct LoxError {
 }
 
 impl LoxError {
-    pub fn new(line: u32, message: String) -> LoxError {
-        LoxError { line, message }
+    pub fn new(line: u32, message: &str) -> LoxError {
+        LoxError {
+            line,
+            message: message.to_owned(),
+        }
     }
 }
 

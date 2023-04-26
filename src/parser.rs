@@ -28,7 +28,7 @@ impl<'a> Parser<'a> {
         }) {
             let operator = t;
             let right = self.comparison()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
     }
@@ -44,7 +44,7 @@ impl<'a> Parser<'a> {
         }) {
             let operator = t;
             let right = self.comparison()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
 
         Ok(expr)
@@ -59,7 +59,7 @@ impl<'a> Parser<'a> {
         {
             let operator = t;
             let right = self.comparison()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
     }
@@ -73,7 +73,7 @@ impl<'a> Parser<'a> {
         {
             let operator = t;
             let right = self.comparison()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.clone(), right)));
+            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
     }
@@ -110,27 +110,27 @@ impl<'a> Parser<'a> {
                         } else if t.token_type == TokenType::Eof {
                             return Err(LoxError::new(
                                 t.line,
-                                "at end Expect ')' after expression".to_owned(),
+                                "at end Expect ')' after expression",
                             ));
                         } else {
                             return Err(LoxError::new(
                                 t.line,
-                                format!("at {}. Expect ')' after expression", t.lexeme),
+                                &format!("at {}. Expect ')' after expression", t.lexeme),
                             ));
                         }
                     } // TODO: Else?
                     Ok(Expr::Grouping(Box::new(GroupingExpr::new(expr))))
                 }
                 _ => match self.tokens.peek() {
-                    Some(t) => Err(LoxError::new(t.line, "expected expression".to_owned())),
+                    Some(t) => Err(LoxError::new(t.line, "expected expression")),
                     None => Err(LoxError::new(
                         t.line,
-                        "EOF, something unterminated".to_owned(),
+                        "EOF, something unterminated",
                     )), // TODO: Better error msg
                 },
             }
         } else {
-            Err(LoxError::new(0, "ran out of tokens lol".to_owned()))
+            Err(LoxError::new(0, "ran out of tokens lol"))
         }
     }
 
@@ -143,14 +143,14 @@ impl<'a> Parser<'a> {
 
             match self.tokens.peek() {
                 Some(t) => match t.token_type {
-                    TokenType::Class => return,
-                    TokenType::Fun => return,
-                    TokenType::Var => return,
-                    TokenType::For => return,
-                    TokenType::If => return,
-                    TokenType::While => return,
-                    TokenType::Print => return,
-                    TokenType::Return => return,
+                    TokenType::Class
+                    | TokenType::Fun
+                    | TokenType::Var
+                    | TokenType::For
+                    | TokenType::If
+                    | TokenType::While
+                    | TokenType::Print
+                    | TokenType::Return => return,
                     _ => {}
                 },
                 None => panic!("Was looking for semicolon... ran out of tokens"),
@@ -171,11 +171,10 @@ fn test_parser() {
     let mut parser = Parser::new(&tokens);
     let expression = parser.parse();
     assert!(expression.is_ok());
-    match expression {
-        Ok(e) => assert_eq!(
+    if let Ok(e) = expression {
+        assert_eq!(
             e.to_string(),
             r#"(!= (group (- (! "hello") (+ 3 true))) "hi")"#
-        ),
-        Err(_) => {}
+        )
     }
 }

@@ -10,6 +10,7 @@ use token::{Token, TokenType};
 mod scanner;
 use scanner::Scanner;
 mod expr;
+mod interpreter;
 mod parser;
 
 fn main() {
@@ -28,12 +29,11 @@ fn main() {
 
 fn run_file(file_path: &str) -> std::io::Result<()> {
     let contents = fs::read_to_string(file_path)?;
-    if run(&contents).is_err() {
-        // EX_DATAERR (65) User input data was incorrect in some way.
-        std::process::exit(65)
+    if run(&contents).is_ok() {
+        return Ok(());
     }
 
-    Ok(())
+    Ok(()) // TODO: handle err case.
 }
 
 /// Goes into prompt-mode. Starts a REPL:
@@ -64,11 +64,16 @@ fn run(source: &str) -> Result<(), LoxError> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().to_vec();
     let mut parser = parser::Parser::new(&tokens);
-    let expression = parser.parse()?;
-    println!("{expression}");
-
-    for token in tokens {
-        println!("{token:?}")
+    let expression = match parser.parse() {
+        Ok(e) => e,
+        // EX_DATAERR (65) User input data was incorrect in some way.
+        Err(_) => std::process::exit(65),
+    };
+    let interpreter = interpreter::Interpreter::new();
+    match interpreter.interpret(expression) {
+        Ok(_) => {}
+        // EX_SOFTWARE (70) Internal software error. Limited to non-OS errors.
+        Err(_) => std::process::exit(70),
     }
 
     Ok(())

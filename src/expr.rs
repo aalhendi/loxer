@@ -2,7 +2,7 @@
 use crate::token::Token;
 use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Literal {
     Identifier(String),
     Boolean(bool),
@@ -40,9 +40,9 @@ pub enum Expr {
 }
 
 pub struct BinaryExpr {
-    left: Expr,
-    operator: Token,
-    right: Expr,
+    pub left: Expr,
+    pub operator: Token,
+    pub right: Expr,
 }
 
 // NOTE: This is used to display reverse Polish notation (RPN)
@@ -86,7 +86,7 @@ impl Display for BinaryExpr {
 }
 
 pub struct GroupingExpr {
-    expression: Expr,
+    pub expression: Expr,
 }
 
 impl GroupingExpr {
@@ -122,8 +122,8 @@ impl Display for LiteralExpr {
 }
 
 pub struct UnaryExpr {
-    operator: Token,
-    right: Expr,
+    pub operator: Token,
+    pub right: Expr,
 }
 
 impl UnaryExpr {

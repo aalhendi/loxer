@@ -113,7 +113,7 @@ impl Scanner<'_> {
                     // TODO: Handle escape sequences
                     lexeme = String::new(); // reset text to trim first quote
                     let mut return_val =
-                        Err(LoxError::new(self.line, "Unterminated string.".to_owned()));
+                        Err(LoxError::new(self.line, "Unterminated string."));
                     for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
                             return_val = Ok(Some(TokenType::String(lexeme.clone())));
@@ -165,7 +165,7 @@ impl Scanner<'_> {
                 }
                 _ => Err(LoxError::new(
                     self.line,
-                    format!("Unexpected Character \"{ch}\""),
+                    &format!("Unexpected Character \"{ch}\""),
                 )),
             };
 
@@ -207,7 +207,7 @@ impl Scanner<'_> {
         }
         Err(LoxError::new(
             self.line,
-            "Unterminated block comment".to_owned(),
+            "Unterminated block comment",
         ))
     }
 }
@@ -215,8 +215,8 @@ impl Scanner<'_> {
 #[cfg(test)]
 #[test]
 fn test_bool() {
-    let source = "true false True False // true // false".to_owned();
-    let mut scanner = Scanner::new(&source);
+    let source = "true false True False // true // false";
+    let mut scanner = Scanner::new(source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
         .iter()

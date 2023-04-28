@@ -1,5 +1,5 @@
 use crate::{
-    expr::{BinaryExpr, Expr, GroupingExpr, Literal, UnaryExpr},
+    expr::{BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr},
     lox_error::LoxError,
     token::{Token, TokenType},
 };
@@ -9,6 +9,19 @@ pub struct Parser<'a> {
     tokens: std::iter::Peekable<std::slice::Iter<'a, Token>>,
 }
 
+/*
+expression     → ternary;
+ternary        → equality ("?" expression ":" conditional)? ;
+equality       → comparison ( ( "!=" | "==" ) comparison )* ;
+comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+term           → factor ( ( "-" | "+" ) factor )* ;
+factor         → unary ( ( "/" | "*" ) unary )* ;
+unary          → ( "!" | "-" ) unary
+               | primary ;
+primary        → NUMBER | STRING | "true" | "false" | "nil"
+               | "(" expression ")" ;
+ */
+
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
         Self {
@@ -17,7 +30,31 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> Result<Expr, LoxError> {
-        self.equality()
+        self.ternary()
+    }
+
+    fn ternary(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.equality()?; // condition
+
+        if let Some(_t) = self
+            .tokens
+            .next_if(|t| t.token_type == TokenType::QuestionMark)
+        {
+            let left = self.expression()?;
+            if let Some(t) = self.tokens.peek() {
+                if t.token_type == TokenType::Colon {
+                    self.tokens.next();
+                } else {
+                    return Err(LoxError::new(
+                        t.line,
+                        &format!("at {}. Expect ':' after truthy expr in ternary", t.lexeme),
+                    ));
+                }
+            }
+            let right = self.ternary()?;
+            expr = Expr::Ternary(Box::new(TernaryExpr::new(expr, left, right)))
+        }
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, LoxError> {
@@ -105,18 +142,13 @@ impl<'a> Parser<'a> {
                     if let Some(t) = self.tokens.peek() {
                         if t.token_type == TokenType::RightParen {
                             self.tokens.next();
-                        } else if t.token_type == TokenType::Eof {
-                            return Err(LoxError::new(
-                                t.line,
-                                "at end Expect ')' after expression",
-                            ));
                         } else {
                             return Err(LoxError::new(
                                 t.line,
                                 &format!("at {}. Expect ')' after expression", t.lexeme),
                             ));
                         }
-                    } // TODO: Else?
+                    }
                     Ok(Expr::Grouping(Box::new(GroupingExpr::new(expr))))
                 }
                 _ => match self.tokens.peek() {
@@ -159,29 +191,37 @@ impl<'a> Parser<'a> {
 }
 
 #[cfg(test)]
-#[test]
-fn test_parser() {
-    let mut scanner = crate::scanner::Scanner::new(r#"(!"hello" -3 + true) != "hi""#);
-    let tokens = scanner.scan_tokens().to_vec();
-    let mut parser = Parser::new(&tokens);
-    let expression = parser.parse();
-    assert!(expression.is_ok());
-    if let Ok(e) = expression {
+mod tests {
+    use crate::{expr::Expr, lox_error::LoxError, scanner::Scanner};
+
+    use super::Parser;
+
+    fn parse_expression(source: &str) -> Result<Expr, LoxError> {
+        let mut scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().to_vec();
+        println!("{tokens:?}");
+        let mut parser = Parser::new(&tokens);
+        parser.parse()
+    }
+
+    #[test]
+    fn test_parser() {
+        let e = parse_expression(r#"(!"hello" -3 + true) != "hi""#);
         assert_eq!(
-            e.to_string(),
+            e.unwrap().to_string(),
             r#"(!= (group (+ (- (! "hello") 3) true)) "hi")"#
         )
     }
-}
 
-#[test]
-fn test_precedence() {
-    let mut scanner = crate::scanner::Scanner::new(r#"1+2*4-5"#);
-    let tokens = scanner.scan_tokens().to_vec();
-    let mut parser = Parser::new(&tokens);
-    let expression = parser.parse();
-    assert!(expression.is_ok());
-    if let Ok(e) = expression {
-        assert_eq!(e.to_string(), r#"(- (+ 1 (* 2 4)) 5)"#)
+    #[test]
+    fn test_precedence() {
+        let e = parse_expression(r#"1+2*4-5"#);
+        assert_eq!(e.unwrap().to_string(), r#"(- (+ 1 (* 2 4)) 5)"#)
+    }
+
+    #[test]
+    fn test_ternary() {
+        let e = parse_expression("5 < 6 ? 1 - 2 : 4 * 3");
+        assert_eq!(e.unwrap().to_string(), "(?: (< 5 6) (- 1 2) (* 4 3))")
     }
 }

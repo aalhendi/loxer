@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+#[derive(Debug)]
 pub struct LoxError {
     line: u32,
     message: String,

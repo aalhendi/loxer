@@ -48,8 +48,11 @@ impl Scanner<'_> {
                 '.' => Ok(Some(TokenType::Dot)),
                 '-' => Ok(Some(TokenType::Minus)),
                 '+' => Ok(Some(TokenType::Plus)),
+                // TODO: Colons are discarded, should they err if used without `?`
+                ':' => Ok(Some(TokenType::Colon)),
                 ';' => Ok(Some(TokenType::Semicolon)),
                 '*' => Ok(Some(TokenType::Star)),
+                '?' => Ok(Some(TokenType::QuestionMark)),
                 '!' => {
                     if let Some(c) = self.source.next_if_eq(&'=') {
                         lexeme = lexeme + &c.to_string();

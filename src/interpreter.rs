@@ -25,31 +25,34 @@ impl Interpreter {
                 let right = self.evaluate(e.right)?;
                 match e.operator.token_type {
                     TokenType::Minus => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         Ok(Literal::Number(n1 - n2))
                     }
                     TokenType::Slash => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
+                        if n2 == 0.0 {
+                            return Err(LoxError::new(e.operator.line, "Division by zero"));
+                        }
                         Ok(Literal::Number(n1 / n2))
                     }
                     TokenType::Star => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         Ok(Literal::Number(n1 * n2))
                     }
                     TokenType::Greater => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         Ok(Literal::Boolean(n1 > n2))
                     }
                     TokenType::GreaterEqual => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         Ok(Literal::Boolean(n1 >= n2))
                     }
                     TokenType::Less => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         Ok(Literal::Boolean(n1 < n2))
                     }
                     TokenType::LessEqual => {
-                        let (n1, n2) = self.check_num(left, right, e.operator)?;
+                        let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         Ok(Literal::Boolean(n1 <= n2))
                     }
                     TokenType::BangEqual => Ok(Literal::Boolean(!self.is_equal(left, right))),
@@ -96,12 +99,25 @@ impl Interpreter {
                     _ => unreachable!("Invalid operator?"),
                 }
             }
+            Expr::Ternary(e) => {
+                let condition = self.evaluate(e.condition)?;
+                if self.is_truthy(condition) {
+                    Ok(self.evaluate(e.left)?)
+                } else {
+                    Ok(self.evaluate(e.right)?)
+                }
+            }
         }
     }
 
-    fn check_num(&self, left: Literal, right: Literal, op: Token) -> Result<(f64, f64), LoxError> {
+    fn check_num(
+        &self,
+        left: &Literal,
+        right: &Literal,
+        op: &Token,
+    ) -> Result<(f64, f64), LoxError> {
         match (left, right) {
-            (Literal::Number(n1), Literal::Number(n2)) => Ok((n1, n2)),
+            (Literal::Number(n1), Literal::Number(n2)) => Ok((*n1, *n2)),
             _ => Err(LoxError::new(
                 op.line,
                 &format!(

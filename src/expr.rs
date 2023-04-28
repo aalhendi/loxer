@@ -35,14 +35,9 @@ pub enum Expr {
     // Set,
     // Super,
     // This,
+    Ternary(Box<TernaryExpr>),
     Unary(Box<UnaryExpr>),
     // VisitVariable,
-}
-
-pub struct BinaryExpr {
-    pub left: Expr,
-    pub operator: Token,
-    pub right: Expr,
 }
 
 // NOTE: This is used to display reverse Polish notation (RPN)
@@ -55,10 +50,17 @@ impl Display for Expr {
                 Expr::Binary(e) => format!("{e}"),
                 Expr::Grouping(e) => format!("{e}"),
                 Expr::Literal(e) => format!("{e}"),
+                Expr::Ternary(e) => format!("{e}"),
                 Expr::Unary(e) => format!("{e}"),
             }
         )
     }
+}
+
+pub struct BinaryExpr {
+    pub left: Expr,
+    pub operator: Token,
+    pub right: Expr,
 }
 
 impl BinaryExpr {
@@ -81,6 +83,36 @@ impl Display for BinaryExpr {
             f,
             "{}",
             parenthesize(&self.operator.lexeme, &[&self.left, &self.right])
+        )
+    }
+}
+
+pub struct TernaryExpr {
+    pub condition: Expr,
+    pub left: Expr,
+    pub right: Expr,
+}
+
+impl TernaryExpr {
+    pub fn new(condition: Expr, left: Expr, right: Expr) -> Self {
+        Self {
+            condition,
+            left,
+            right,
+        }
+    }
+
+    // fn to_rpn(&self) -> String {
+    //     walk_rpn("?:", &[&self.condition, &self.left, &self.right])
+    // }
+}
+
+impl Display for TernaryExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            parenthesize("?:", &[&self.condition, &self.left, &self.right])
         )
     }
 }
@@ -152,6 +184,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Binary(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Grouping(e) => parenthesize("group", &[&e.expression]),
             Expr::Literal(l) => format!("{l}"),
+            Expr::Ternary(e) => parenthesize("?:", &[&e.condition, &e.left, &e.right]),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
         };
         builder.push_str(&res);
@@ -172,6 +205,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => {
                 format!("{l}")
             }
+            Expr::Ternary(_e) => todo!("RPN for ternary expressions"), // TODO: RPN isn't expressive enough for ternary?
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
         };
         builder.push_str(&res);
@@ -182,64 +216,96 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
 }
 
 #[cfg(test)]
-#[test]
-fn test_expr() {
-    use crate::token::TokenType;
+mod tests {
+    use crate::{
+        expr::{BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr},
+        token::{Token, TokenType},
+    };
 
-    let left = Expr::Unary(Box::new(UnaryExpr::new(
-        Token::new(TokenType::Minus, "-".to_owned(), 1),
-        Expr::Literal(Literal::Number(123.0)),
-    )));
-    let right = Expr::Grouping(Box::new(GroupingExpr::new(Expr::Literal(Literal::Number(
-        45.76,
-    )))));
-    let expression = BinaryExpr::new(left, Token::new(TokenType::Star, "*".to_owned(), 1), right);
+    fn build_e1() -> BinaryExpr {
+        let left = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(1.0)),
+            Token::new(TokenType::Plus, "+".to_owned(), 1),
+            Expr::Literal(Literal::Number(2.0)),
+        )));
+        let right = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(4.0)),
+            Token::new(TokenType::Minus, "-".to_owned(), 1),
+            Expr::Literal(Literal::Number(3.0)),
+        )));
 
-    assert_eq!(expression.to_string(), "(* (- 123) (group 45.76))");
+        BinaryExpr::new(left, Token::new(TokenType::Star, "*".to_owned(), 1), right)
+    }
 
-    let left = Expr::Unary(Box::new(UnaryExpr::new(
-        Token::new(TokenType::Bang, "!".to_owned(), 1),
-        Expr::Literal(Literal::Boolean(true)),
-    )));
-    let right = Expr::Binary(Box::new(BinaryExpr::new(
-        Expr::Literal(Literal::String("Hello".to_owned())),
-        Token::new(TokenType::BangEqual, "!=".to_owned(), 1),
-        Expr::Literal(Literal::String("World".to_owned())),
-    )));
-    let expression = BinaryExpr::new(
-        left,
-        Token::new(TokenType::EqualEqual, "==".to_owned(), 1),
-        right,
-    );
+    fn build_e2() -> BinaryExpr {
+        let left = Expr::Unary(Box::new(UnaryExpr::new(
+            Token::new(TokenType::Minus, "-".to_owned(), 1),
+            Expr::Literal(Literal::Number(123.0)),
+        )));
+        let right = Expr::Grouping(Box::new(GroupingExpr::new(Expr::Literal(Literal::Number(
+            45.76,
+        )))));
 
-    assert_eq!(
-        expression.to_string(),
-        "(== (! true) (!= \"Hello\" \"World\"))"
-    )
-}
+        BinaryExpr::new(left, Token::new(TokenType::Star, "*".to_owned(), 1), right)
+    }
 
-#[test]
-fn test_expr_rpn() {
-    use crate::token::TokenType;
+    fn build_e3() -> TernaryExpr {
+        let condition = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(5.0)),
+            Token::new(TokenType::Greater, ">".to_owned(), 1),
+            Expr::Literal(Literal::Number(6.0)),
+        )));
+        let left = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(1.0)),
+            Token::new(TokenType::Plus, "+".to_owned(), 1),
+            Expr::Literal(Literal::Number(2.0)),
+        )));
+        let right = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::Number(4.0)),
+            Token::new(TokenType::Minus, "-".to_owned(), 1),
+            Expr::Literal(Literal::Number(3.0)),
+        )));
+        TernaryExpr::new(condition, left, right)
+    }
 
-    let left = Expr::Binary(Box::new(BinaryExpr::new(
-        Expr::Literal(Literal::Number(1.0)),
-        Token::new(TokenType::Plus, "+".to_owned(), 1),
-        Expr::Literal(Literal::Number(2.0)),
-    )));
-    let right = Expr::Binary(Box::new(BinaryExpr::new(
-        Expr::Literal(Literal::Number(4.0)),
-        Token::new(TokenType::Minus, "-".to_owned(), 1),
-        Expr::Literal(Literal::Number(3.0)),
-    )));
-    let expression = BinaryExpr::new(left, Token::new(TokenType::Star, "*".to_owned(), 1), right);
+    #[test]
+    fn test_expr() {
+        let e = build_e2();
+        assert_eq!(e.to_string(), "(* (- 123) (group 45.76))");
 
-    assert_eq!(expression.to_rpn(), "1 2 + 4 3 - *");
+        let left = Expr::Unary(Box::new(UnaryExpr::new(
+            Token::new(TokenType::Bang, "!".to_owned(), 1),
+            Expr::Literal(Literal::Boolean(true)),
+        )));
+        let right = Expr::Binary(Box::new(BinaryExpr::new(
+            Expr::Literal(Literal::String("Hello".to_owned())),
+            Token::new(TokenType::BangEqual, "!=".to_owned(), 1),
+            Expr::Literal(Literal::String("World".to_owned())),
+        )));
+        let expression = BinaryExpr::new(
+            left,
+            Token::new(TokenType::EqualEqual, "==".to_owned(), 1),
+            right,
+        );
 
-    let expression = UnaryExpr::new(
-        Token::new(TokenType::Bang, "!".to_owned(), 1),
-        Expr::Literal(Literal::Boolean(true)),
-    );
+        assert_eq!(
+            expression.to_string(),
+            "(== (! true) (!= \"Hello\" \"World\"))"
+        );
 
-    assert_eq!(expression.to_rpn(), "true !")
+        let e = build_e3();
+        assert_eq!(e.to_string(), "(?: (> 5 6) (+ 1 2) (- 4 3))");
+    }
+
+    #[test]
+    fn test_expr_rpn() {
+        let e = build_e1();
+        assert_eq!(e.to_rpn(), "1 2 + 4 3 - *");
+
+        let e = UnaryExpr::new(
+            Token::new(TokenType::Bang, "!".to_owned(), 1),
+            Expr::Literal(Literal::Boolean(true)),
+        );
+        assert_eq!(e.to_rpn(), "true !");
+    }
 }

@@ -69,7 +69,7 @@ fn run(source: &str) -> Result<(), (LoxError, i32)> {
     let mut parser = parser::Parser::new(&tokens);
     let expression = match parser.parse() {
         Ok(e) => e,
-        Err(err) => return Err((err, 65i32)),
+        Err(err) => return Err((err, 65)),
     };
     let interpreter = interpreter::Interpreter::new();
     match interpreter.interpret(expression) {

@@ -2,7 +2,7 @@
 use crate::token::Token;
 use std::fmt::Display;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Identifier(String),
     Boolean(bool),
@@ -24,6 +24,7 @@ impl Display for Literal {
     }
 }
 
+#[derive(Debug)]
 pub enum Expr {
     // Assign,
     Binary(Box<BinaryExpr>),
@@ -57,6 +58,7 @@ impl Display for Expr {
     }
 }
 
+#[derive(Debug)]
 pub struct BinaryExpr {
     pub left: Expr,
     pub operator: Token,
@@ -87,6 +89,7 @@ impl Display for BinaryExpr {
     }
 }
 
+#[derive(Debug)]
 pub struct TernaryExpr {
     pub condition: Expr,
     pub left: Expr,
@@ -117,6 +120,7 @@ impl Display for TernaryExpr {
     }
 }
 
+#[derive(Debug)]
 pub struct GroupingExpr {
     pub expression: Expr,
 }
@@ -137,6 +141,7 @@ impl Display for GroupingExpr {
     }
 }
 
+#[derive(Debug)]
 pub struct LiteralExpr {
     value: Literal,
 }
@@ -153,6 +158,7 @@ impl Display for LiteralExpr {
     }
 }
 
+#[derive(Debug)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Expr,

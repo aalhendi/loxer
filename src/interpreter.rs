@@ -1,6 +1,7 @@
 use crate::{
     expr::{Expr, Literal},
     lox_error::LoxError,
+    stmt::Stmt,
     token::{Token, TokenType},
 };
 
@@ -11,18 +12,33 @@ impl Interpreter {
         Self {}
     }
 
-    pub fn interpret(self, expr: Expr) -> Result<(), LoxError> {
-        let value = self.evaluate(expr)?;
-        println!("{}", value);
-
+    pub fn interpret(self, statements: &[Stmt]) -> Result<(), LoxError> {
+        for s in statements {
+            match s {
+                Stmt::Block(_) => todo!(),
+                Stmt::Class(_) => todo!(),
+                Stmt::Expression(s) => {
+                    self.evaluate(&s.expression)?;
+                }
+                Stmt::Function(_) => todo!(),
+                Stmt::If(_) => todo!(),
+                Stmt::Print(s) => {
+                    let value = self.evaluate(&s.expression)?;
+                    println!("{value}");
+                }
+                Stmt::Return(_) => todo!(),
+                Stmt::Var(_) => todo!(),
+                Stmt::While(_) => todo!(),
+            }
+        }
         Ok(())
     }
 
-    fn evaluate(&self, expr: Expr) -> Result<Literal, LoxError> {
+    fn evaluate(&self, expr: &Expr) -> Result<Literal, LoxError> {
         match expr {
             Expr::Binary(e) => {
-                let left = self.evaluate(e.left)?;
-                let right = self.evaluate(e.right)?;
+                let left = self.evaluate(&e.left)?;
+                let right = self.evaluate(&e.right)?;
                 match e.operator.token_type {
                     TokenType::Minus => {
                         let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
@@ -80,10 +96,10 @@ impl Interpreter {
                     _ => unreachable!("Invalid operator?"),
                 }
             }
-            Expr::Grouping(e) => self.evaluate(e.expression),
-            Expr::Literal(e) => Ok(e),
+            Expr::Grouping(e) => self.evaluate(&e.expression),
+            Expr::Literal(e) => Ok(e.clone()), // TODO: ?
             Expr::Unary(e) => {
-                let right = self.evaluate(e.right)?;
+                let right = self.evaluate(&e.right)?;
                 match e.operator.token_type {
                     TokenType::Minus => match right {
                         Literal::Number(n) => Ok(Literal::Number(-n)),
@@ -100,11 +116,11 @@ impl Interpreter {
                 }
             }
             Expr::Ternary(e) => {
-                let condition = self.evaluate(e.condition)?;
+                let condition = self.evaluate(&e.condition)?;
                 if self.is_truthy(condition) {
-                    Ok(self.evaluate(e.left)?)
+                    Ok(self.evaluate(&e.left)?)
                 } else {
-                    Ok(self.evaluate(e.right)?)
+                    Ok(self.evaluate(&e.right)?)
                 }
             }
         }
@@ -168,7 +184,7 @@ mod tests {
         )));
 
         let interpreter = Interpreter::new();
-        let result = interpreter.evaluate(e);
+        let result = interpreter.evaluate(&e);
         match result {
             Ok(e) => assert_eq!(e, Literal::Number(16.0)),
             Err(_) => unreachable!(),
@@ -194,7 +210,7 @@ mod tests {
         )));
 
         let interpreter = Interpreter::new();
-        let result = interpreter.evaluate(e);
+        let result = interpreter.evaluate(&e);
         match result {
             Ok(e) => assert_eq!(e, Literal::Number(-3.0)),
             Err(_) => unreachable!(),

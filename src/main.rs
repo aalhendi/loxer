@@ -12,6 +12,7 @@ use scanner::Scanner;
 mod expr;
 mod interpreter;
 mod parser;
+mod stmt;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -67,15 +68,13 @@ fn run(source: &str) -> Result<(), (LoxError, i32)> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().to_vec();
     let mut parser = parser::Parser::new(&tokens);
-    let expression = match parser.parse() {
-        Ok(e) => e,
+    let statements = match parser.parse() {
+        Ok(s) => s,
         Err(err) => return Err((err, 65)),
     };
     let interpreter = interpreter::Interpreter::new();
-    match interpreter.interpret(expression) {
-        Ok(_) => {}
-        Err(err) => return Err((err, 70)),
-    };
-
-    Ok(())
+    match interpreter.interpret(&statements) {
+        Ok(_) => Ok(()),
+        Err(e) => Err((e, 70)),
+    }
 }

@@ -1,7 +1,7 @@
 use crate::{
-    expr::{BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr},
+    expr::{BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr, VariableExpr},
     lox_error::LoxError,
-    stmt::{ExpressionStmt, PrintStmt, Stmt},
+    stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt},
     token::{Token, TokenType},
 };
 
@@ -12,10 +12,13 @@ pub struct Parser<'a> {
 
 /*
 program        → statement* EOF ;
+declaration    → varDecl
+               | statement ;
 statement      → exprStmt
                | printStmt ;
 printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
+varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 expression     → ternary;
 ternary        → equality ("?" expression ":" conditional)? ;
 equality       → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -25,7 +28,8 @@ factor         → unary ( ( "/" | "*" ) unary )* ;
 unary          → ( "!" | "-" ) unary
                | primary ;
 primary        → NUMBER | STRING | "true" | "false" | "nil"
-               | "(" expression ")" ;
+               | "(" expression ")"
+               | IDENTIFIER ;
  */
 
 impl<'a> Parser<'a> {
@@ -41,9 +45,69 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Eof {
                 break;
             }
-            statements.push(self.statement()?);
+            statements.push(self.declaration()?);
         }
         Ok(statements)
+    }
+
+    fn declaration(&mut self) -> Result<Stmt, LoxError> {
+        if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Var) {
+            match self.var_declaration() {
+                Ok(s) => return Ok(s),
+                Err(e) => {
+                    // TODO: Catch only runtime errors, add ``kind``
+                    self.sync();
+                    return Err(e);
+                }
+            }
+        }
+        match self.statement() {
+            Ok(s) => Ok(s),
+            Err(e) => {
+                // TODO: Catch only runtime errors, add ``kind``
+                self.sync();
+                Err(e)
+            }
+        }
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt, LoxError> {
+        while let Some(t) = self.tokens.peek() {
+            if let TokenType::Identifier(_) = &t.token_type {
+                break;
+            } else if let TokenType::Eof = &t.token_type {
+                return Err(LoxError::new(t.line, "Expect `;` after expression."));
+            }
+        }
+
+        let name = self.tokens.next().unwrap();
+        // let name = match self.tokens.next() {
+        //     Some(t) => t,
+        //     // TODO: Line number?
+        //     None => return Err(LoxError::new(0, "Expect `;` after expression.")),
+        // };
+
+        // TODO: Can be cleaned up into one loop?
+        let mut initializer = None;
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Equal {
+                self.tokens.next();
+                initializer = Some(self.expression()?);
+            }
+        }
+
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Semicolon {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect ';' after vareiable declaration", t.lexeme),
+                ));
+            }
+        }
+
+        Ok(Stmt::Var(Box::new(VarStmt::new(name.clone(), initializer))))
     }
 
     fn statement(&mut self) -> Result<Stmt, LoxError> {
@@ -80,7 +144,6 @@ impl<'a> Parser<'a> {
                 ));
             }
         }
-        println!("value {expr:?}");
         Ok(Stmt::Expression(Box::new(ExpressionStmt::new(expr))))
     }
 
@@ -206,6 +269,9 @@ impl<'a> Parser<'a> {
                     }
                     Ok(Expr::Grouping(Box::new(GroupingExpr::new(expr))))
                 }
+                TokenType::Identifier(_) => {
+                    Ok(Expr::Variable(Box::new(VariableExpr::new(t.clone()))))
+                }
                 _ => match self.tokens.peek() {
                     Some(t) => Err(LoxError::new(t.line, "expected expression")),
                     None => Err(LoxError::new(t.line, "EOF, something unterminated")), // TODO: Better error msg
@@ -216,15 +282,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    #[allow(dead_code)]
     fn sync(&mut self) {
         while let Some(t) = self.tokens.next() {
             if t.token_type == TokenType::Semicolon {
                 return;
             };
 
-            match self.tokens.peek() {
-                Some(t) => match t.token_type {
+            if let Some(t) = self.tokens.peek() {
+                match t.token_type {
                     TokenType::Class
                     | TokenType::Fun
                     | TokenType::Var
@@ -234,8 +299,7 @@ impl<'a> Parser<'a> {
                     | TokenType::Print
                     | TokenType::Return => return,
                     _ => {}
-                },
-                None => panic!("Was looking for semicolon... ran out of tokens"),
+                }
             }
         }
     }

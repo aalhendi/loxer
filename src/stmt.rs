@@ -70,8 +70,14 @@ pub struct ReturnStmt {
 
 #[derive(Debug)]
 pub struct VarStmt {
-    name: Token,
-    initializer: Expr,
+    pub name: Token,
+    pub initializer: Option<Expr>,
+}
+
+impl VarStmt {
+    pub fn new(name: Token, initializer: Option<Expr>) -> Self {
+        Self { name, initializer }
+    }
 }
 
 #[derive(Debug)]

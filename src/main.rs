@@ -9,10 +9,12 @@ mod token;
 use token::{Token, TokenType};
 mod scanner;
 use scanner::Scanner;
-mod expr;
 mod interpreter;
+use interpreter::Interpreter;
+mod expr;
 mod parser;
 mod stmt;
+mod environment;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -30,7 +32,8 @@ fn main() {
 
 fn run_file(file_path: &str) -> std::io::Result<()> {
     let contents = fs::read_to_string(file_path)?;
-    if let Err((e, code)) = run(&contents) {
+    let mut interpreter = Interpreter::new();
+    if let Err((e, code)) = run(&contents, &mut interpreter) {
         // EX_DATAERR (65) User input data was incorrect in some way.
         // EX_SOFTWARE (70) Internal software error. Limited to non-OS errors.
         eprintln!("{e}");
@@ -43,6 +46,7 @@ fn run_file(file_path: &str) -> std::io::Result<()> {
 /// Goes into prompt-mode. Starts a REPL:
 /// Read a line of input, Evaluate it, Print the result, then Loop
 fn run_prompt() {
+    let mut interpreter = Interpreter::new();
     print!("> ");
     io::stdout().flush().expect("Unable to flush stdout");
     for line in io::stdin().lock().lines() {
@@ -52,7 +56,7 @@ fn run_prompt() {
                     break;
                 }
                 // TODO: Error is not propagating correctly
-                if let Err((e, _code)) = run(&line) {
+                if let Err((e, _code)) = run(&line, &mut interpreter) {
                     eprintln!("{e}")
                 }
                 print!("> ");
@@ -64,7 +68,7 @@ fn run_prompt() {
 }
 
 /// On error, returns an instance of LoxError and an ExitCode
-fn run(source: &str) -> Result<(), (LoxError, i32)> {
+fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), (LoxError, i32)> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().to_vec();
     let mut parser = parser::Parser::new(&tokens);
@@ -72,7 +76,6 @@ fn run(source: &str) -> Result<(), (LoxError, i32)> {
         Ok(s) => s,
         Err(err) => return Err((err, 65)),
     };
-    let interpreter = interpreter::Interpreter::new();
     match interpreter.interpret(&statements) {
         Ok(_) => Ok(()),
         Err(e) => Err((e, 70)),

@@ -38,7 +38,7 @@ pub enum Expr {
     // This,
     Ternary(Box<TernaryExpr>),
     Unary(Box<UnaryExpr>),
-    // VisitVariable,
+    Variable(Box<VariableExpr>),
 }
 
 // NOTE: This is used to display reverse Polish notation (RPN)
@@ -53,6 +53,7 @@ impl Display for Expr {
                 Expr::Literal(e) => format!("{e}"),
                 Expr::Ternary(e) => format!("{e}"),
                 Expr::Unary(e) => format!("{e}"),
+                Expr::Variable(e) => format!("{e}"),
             }
         )
     }
@@ -180,6 +181,27 @@ impl Display for UnaryExpr {
     }
 }
 
+#[derive(Debug)]
+pub struct VariableExpr {
+    pub name: Token,
+}
+
+impl VariableExpr {
+    pub fn new(name: Token) -> Self {
+        Self { name }
+    }
+}
+
+impl Display for VariableExpr{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            parenthesize(&self.name.lexeme, &[])
+        )
+    }
+}
+
 fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
     let mut builder = String::new();
     builder.push('(');
@@ -192,6 +214,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => format!("{l}"),
             Expr::Ternary(e) => parenthesize("?:", &[&e.condition, &e.left, &e.right]),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
+            Expr::Variable(e) => format!("{e}"),
         };
         builder.push_str(&res);
     }
@@ -213,6 +236,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             }
             Expr::Ternary(_e) => todo!("RPN for ternary expressions"), // TODO: RPN isn't expressive enough for ternary?
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
+            Expr::Variable(_e) => todo!(),
         };
         builder.push_str(&res);
         builder.push(' ');

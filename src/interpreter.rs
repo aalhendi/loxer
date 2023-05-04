@@ -1,18 +1,23 @@
 use crate::{
+    environment::Environment,
     expr::{Expr, Literal},
     lox_error::LoxError,
     stmt::Stmt,
     token::{Token, TokenType},
 };
 
-pub struct Interpreter {}
+pub struct Interpreter {
+    environment: Environment,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            environment: Environment::new(),
+        }
     }
 
-    pub fn interpret(self, statements: &[Stmt]) -> Result<(), LoxError> {
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
         for s in statements {
             match s {
                 Stmt::Block(_) => todo!(),
@@ -27,7 +32,14 @@ impl Interpreter {
                     println!("{value}");
                 }
                 Stmt::Return(_) => todo!(),
-                Stmt::Var(_) => todo!(),
+                Stmt::Var(s) => {
+                    let value = if let Some(initializer) = &s.initializer {
+                        self.evaluate(initializer)?
+                    } else {
+                        Literal::Nil
+                    };
+                    self.environment.define(&s.name.lexeme, value);
+                }
                 Stmt::While(_) => todo!(),
             }
         }
@@ -123,6 +135,8 @@ impl Interpreter {
                     Ok(self.evaluate(&e.right)?)
                 }
             }
+            // TODO: Clone?
+            Expr::Variable(e) => self.environment.get(e.name.clone()),
         }
     }
 

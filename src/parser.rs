@@ -1,5 +1,7 @@
 use crate::{
-    expr::{BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr, VariableExpr},
+    expr::{
+        AssignExpr, BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr, VariableExpr,
+    },
     lox_error::LoxError,
     stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt},
     token::{Token, TokenType},
@@ -20,7 +22,9 @@ printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 expression     → ternary;
-ternary        → equality ("?" expression ":" conditional)? ;
+ternary        → assignment ("?" expression ":" conditional)? ;
+assignment     → IDENTIFIER "=" assignment
+               | equality ;
 equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
@@ -72,20 +76,21 @@ impl<'a> Parser<'a> {
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, LoxError> {
-        while let Some(t) = self.tokens.peek() {
-            if let TokenType::Identifier(_) = &t.token_type {
-                break;
-            } else if let TokenType::Eof = &t.token_type {
-                return Err(LoxError::new(t.line, "Expect `;` after expression."));
+        let name = match self.tokens.peek() {
+            Some(t) => {
+                if let TokenType::Identifier(_) = &t.token_type {
+                    self.tokens.next().unwrap()
+                } else if let TokenType::Eof = &t.token_type {
+                    return Err(LoxError::new(t.line, "Expect `;` after expression."));
+                } else {
+                    return Err(LoxError::new(
+                        t.line,
+                        "Expect variable name after `var` keyword.",
+                    ));
+                }
             }
-        }
-
-        let name = self.tokens.next().unwrap();
-        // let name = match self.tokens.next() {
-        //     Some(t) => t,
-        //     // TODO: Line number?
-        //     None => return Err(LoxError::new(0, "Expect `;` after expression.")),
-        // };
+            _ => unreachable!("ran out of tokens"),
+        };
 
         // TODO: Can be cleaned up into one loop?
         let mut initializer = None;
@@ -102,7 +107,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Err(LoxError::new(
                     t.line,
-                    &format!("at {} Expect ';' after vareiable declaration", t.lexeme),
+                    &format!("at {} Expect ';' after variable declaration", t.lexeme),
                 ));
             }
         }
@@ -152,7 +157,7 @@ impl<'a> Parser<'a> {
     }
 
     fn ternary(&mut self) -> Result<Expr, LoxError> {
-        let mut expr = self.equality()?; // condition
+        let mut expr = self.assignment()?; // condition
 
         if let Some(_t) = self
             .tokens
@@ -172,6 +177,27 @@ impl<'a> Parser<'a> {
             let right = self.ternary()?;
             expr = Expr::Ternary(Box::new(TernaryExpr::new(expr, left, right)))
         }
+        Ok(expr)
+    }
+
+    fn assignment(&mut self) -> Result<Expr, LoxError> {
+        let expr = self.equality()?;
+
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Equal {
+                let equals = self.tokens.next().unwrap();
+                // Recursively parse right-hand side since assignment is right-associative
+                let value = self.assignment()?;
+
+                match expr {
+                    Expr::Variable(s) => {
+                        return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))))
+                    }
+                    _ => return Err(LoxError::new(equals.line, "Invalid assignment target.")),
+                }
+            }
+        }
+
         Ok(expr)
     }
 

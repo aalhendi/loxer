@@ -26,7 +26,7 @@ impl Display for Literal {
 
 #[derive(Debug)]
 pub enum Expr {
-    // Assign,
+    Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
     // Call,
     // Get,
@@ -48,6 +48,7 @@ impl Display for Expr {
             f,
             "{expr}",
             expr = match self {
+                Expr::Assign(e) => format!("{e}"),
                 Expr::Binary(e) => format!("{e}"),
                 Expr::Grouping(e) => format!("{e}"),
                 Expr::Literal(e) => format!("{e}"),
@@ -202,6 +203,28 @@ impl Display for VariableExpr{
     }
 }
 
+#[derive(Debug)]
+pub struct AssignExpr {
+    pub name: Token,
+    pub value: Expr,
+}
+
+impl AssignExpr {
+    pub fn new(name: Token, value: Expr) -> Self {
+        Self { name, value }
+    }
+}
+
+impl Display for AssignExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            parenthesize(&self.name.lexeme, &[&self.value])
+        )
+    }
+}
+
 fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
     let mut builder = String::new();
     builder.push('(');
@@ -209,6 +232,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
     for expr in exprs {
         builder.push(' ');
         let res = match expr {
+            Expr::Assign(e) => parenthesize(&e.name.lexeme, &[&e.value]), // TODO: Check
             Expr::Binary(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Grouping(e) => parenthesize("group", &[&e.expression]),
             Expr::Literal(l) => format!("{l}"),
@@ -227,6 +251,9 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
     let mut builder = String::new();
     for expr in exprs {
         let res = match expr {
+            Expr::Assign(e) => {
+                format!("{} {}", e.value, e.name.lexeme)
+            }
             Expr::Binary(e) => {
                 format!("{} {} {}", e.left, e.right, e.operator.lexeme)
             }

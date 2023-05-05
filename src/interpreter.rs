@@ -46,7 +46,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn evaluate(&self, expr: &Expr) -> Result<Literal, LoxError> {
+    fn evaluate(&mut self, expr: &Expr) -> Result<Literal, LoxError> {
         match expr {
             Expr::Binary(e) => {
                 let left = self.evaluate(&e.left)?;
@@ -137,6 +137,11 @@ impl Interpreter {
             }
             // TODO: Clone?
             Expr::Variable(e) => self.environment.get(e.name.clone()),
+            Expr::Assign(e) => {
+                let value = self.evaluate(&e.value)?;
+                self.environment.assign(e.name.clone(), value.clone())?;
+                Ok(value)
+            }
         }
     }
 
@@ -197,7 +202,7 @@ mod tests {
             right,
         )));
 
-        let interpreter = Interpreter::new();
+        let mut interpreter = Interpreter::new();
         let result = interpreter.evaluate(&e);
         match result {
             Ok(e) => assert_eq!(e, Literal::Number(16.0)),
@@ -223,7 +228,7 @@ mod tests {
             right,
         )));
 
-        let interpreter = Interpreter::new();
+        let mut interpreter = Interpreter::new();
         let result = interpreter.evaluate(&e);
         match result {
             Ok(e) => assert_eq!(e, Literal::Number(-3.0)),

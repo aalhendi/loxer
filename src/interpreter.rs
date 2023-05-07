@@ -13,36 +13,61 @@ pub struct Interpreter {
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            environment: Environment::new(),
+            environment: Environment::new(None),
         }
     }
 
     pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
         for s in statements {
-            match s {
-                Stmt::Block(_) => todo!(),
-                Stmt::Class(_) => todo!(),
-                Stmt::Expression(s) => {
-                    self.evaluate(&s.expression)?;
-                }
-                Stmt::Function(_) => todo!(),
-                Stmt::If(_) => todo!(),
-                Stmt::Print(s) => {
-                    let value = self.evaluate(&s.expression)?;
-                    println!("{value}");
-                }
-                Stmt::Return(_) => todo!(),
-                Stmt::Var(s) => {
-                    let value = if let Some(initializer) = &s.initializer {
-                        self.evaluate(initializer)?
-                    } else {
-                        Literal::Nil
-                    };
-                    self.environment.define(&s.name.lexeme, value);
-                }
-                Stmt::While(_) => todo!(),
-            }
+            self.execute(s)?;
         }
+        Ok(())
+    }
+
+    fn execute(&mut self, s: &Stmt) -> Result<(), LoxError> {
+        match s {
+            Stmt::Block(s) => {
+                self.execute_block(
+                    &s.statements,
+                    Environment::new(Some(Box::new(self.environment.clone()))),
+                )?;
+            }
+            Stmt::Class(_) => todo!(),
+            Stmt::Expression(s) => {
+                self.evaluate(&s.expression)?;
+            }
+            Stmt::Function(_) => todo!(),
+            Stmt::If(_) => todo!(),
+            Stmt::Print(s) => {
+                let value = self.evaluate(&s.expression)?;
+                println!("{value}");
+            }
+            Stmt::Return(_) => todo!(),
+            Stmt::Var(s) => {
+                let value = if let Some(initializer) = &s.initializer {
+                    self.evaluate(initializer)?
+                } else {
+                    Literal::Nil
+                };
+                self.environment.define(&s.name.lexeme, value);
+            }
+            Stmt::While(_) => todo!(),
+        };
+        Ok(())
+    }
+
+    fn execute_block(
+        &mut self,
+        statements: &[Stmt],
+        environment: Environment,
+    ) -> Result<(), LoxError> {
+        let previous = self.environment.clone();
+        self.environment = environment;
+        for s in statements {
+            self.execute(s)?;
+        }
+        self.environment = previous;
+
         Ok(())
     }
 

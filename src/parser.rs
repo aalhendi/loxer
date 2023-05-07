@@ -3,7 +3,7 @@ use crate::{
         AssignExpr, BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr, VariableExpr,
     },
     lox_error::LoxError,
-    stmt::{ExpressionStmt, PrintStmt, Stmt, VarStmt},
+    stmt::{BlockStmt, ExpressionStmt, PrintStmt, Stmt, VarStmt},
     token::{Token, TokenType},
 };
 
@@ -18,6 +18,7 @@ declaration    → varDecl
                | statement ;
 statement      → exprStmt
                | printStmt ;
+block          → "{" declaration* "}" ;
 printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -119,6 +120,12 @@ impl<'a> Parser<'a> {
         if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Print) {
             return self.print_statement();
         }
+        if let Some(_t) = self
+            .tokens
+            .next_if(|t| t.token_type == TokenType::LeftBrace)
+        {
+            return Ok(Stmt::Block(Box::new(BlockStmt::new(self.block()?))));
+        }
         self.expression_statement()
     }
 
@@ -150,6 +157,27 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(Stmt::Expression(Box::new(ExpressionStmt::new(expr))))
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt>, LoxError> {
+        let mut statements = Vec::new();
+        while let Some(t) = self.tokens.peek() {
+            match t.token_type {
+                TokenType::RightBrace | TokenType::Eof => break,
+                _ => statements.push(self.declaration()?)
+            }
+        }
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::RightBrace {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {}. Expect '}}' after block", t.lexeme),
+                ));
+            }
+        }
+        Ok(statements)
     }
 
     fn expression(&mut self) -> Result<Expr, LoxError> {
@@ -193,7 +221,11 @@ impl<'a> Parser<'a> {
                     Expr::Variable(s) => {
                         return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))))
                     }
-                    _ => return Err(LoxError::new(equals.line, "Invalid assignment target.")),
+                    _ => eprintln!(
+                        "{}",
+                        LoxError::new(equals.line, "Invalid assignment target.")
+                    ),
+                    // NOTE: Err is reported but not thrown here, parser is not in confused state where it needs to panic and sync
                 }
             }
         }

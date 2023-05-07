@@ -1,14 +1,17 @@
 use crate::{expr::Literal, lox_error::LoxError, token::Token};
-use std::collections::{HashMap, hash_map::Entry::Occupied};
+use std::collections::{hash_map::Entry::Occupied, HashMap};
 
+#[derive(Clone)]
 pub struct Environment {
     values: HashMap<String, Literal>,
+    enclosing: Option<Box<Environment>>,
 }
 
 impl Environment {
-    pub fn new() -> Self {
+    pub fn new(enclosing: Option<Box<Environment>>) -> Self {
         Self {
             values: HashMap::new(),
+            enclosing,
         }
     }
 
@@ -26,10 +29,16 @@ impl Environment {
     pub fn get(&self, name: Token) -> Result<Literal, LoxError> {
         match self.values.get(&name.lexeme) {
             Some(v) => Ok(v.clone()),
-            None => Err(LoxError::new(
-                name.line,
-                &format!("Undefined variable `{}`.", name.lexeme),
-            )),
+            None => {
+                if let Some(e) = &self.enclosing {
+                    return e.get(name);
+                }
+
+                Err(LoxError::new(
+                    name.line,
+                    &format!("Undefined variable `{}`.", name.lexeme),
+                ))
+            }
         }
     }
 
@@ -38,7 +47,13 @@ impl Environment {
             e.insert(value);
             Ok(())
         } else {
-            Err(LoxError::new(name.line, &format!("Undefined variable `{}`.", name.lexeme)))
+            if let Some(e) = &mut self.enclosing {
+                return e.assign(name, value);
+            }
+            Err(LoxError::new(
+                name.line,
+                &format!("Undefined variable `{}`.", name.lexeme),
+            ))
         }
     }
 }

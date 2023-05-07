@@ -16,7 +16,13 @@ pub enum Stmt {
 
 #[derive(Debug)]
 pub struct BlockStmt {
-    statements: Vec<Stmt>,
+    pub statements: Vec<Stmt>,
+}
+
+impl BlockStmt {
+    pub fn new(statements: Vec<Stmt>) -> Self {
+        Self { statements }
+    }
 }
 
 #[derive(Debug)]

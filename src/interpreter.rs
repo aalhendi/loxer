@@ -37,7 +37,14 @@ impl Interpreter {
                 self.evaluate(&s.expression)?;
             }
             Stmt::Function(_) => todo!(),
-            Stmt::If(_) => todo!(),
+            Stmt::If(s) => {
+                let condition_expr = self.evaluate(&s.condition)?;
+                if self.is_truthy(condition_expr) {
+                    self.execute(&s.then_branch)?;
+                } else if let Some(else_branch) = &s.else_branch {
+                    self.execute(else_branch)?;
+                }
+            }
             Stmt::Print(s) => {
                 let value = self.evaluate(&s.expression)?;
                 println!("{value}");

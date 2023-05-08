@@ -1,9 +1,10 @@
 use crate::{
     expr::{
-        AssignExpr, BinaryExpr, Expr, GroupingExpr, Literal, ConditionalExpr, UnaryExpr, VariableExpr,
+        AssignExpr, BinaryExpr, ConditionalExpr, Expr, GroupingExpr, Literal, UnaryExpr,
+        VariableExpr,
     },
     lox_error::LoxError,
-    stmt::{BlockStmt, ExpressionStmt, PrintStmt, Stmt, VarStmt},
+    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt},
     token::{Token, TokenType},
 };
 
@@ -17,7 +18,11 @@ program        → statement* EOF ;
 declaration    → varDecl
                | statement ;
 statement      → exprStmt
-               | printStmt ;
+               | ifStmt
+               | printStmt
+               | block ;
+ifStmt         → "if" "(" expression ")" statement
+               ( "else" statement )? ;
 block          → "{" declaration* "}" ;
 printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
@@ -117,6 +122,9 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Result<Stmt, LoxError> {
+        if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::If) {
+            return self.if_statement();
+        }
         if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Print) {
             return self.print_statement();
         }
@@ -126,7 +134,45 @@ impl<'a> Parser<'a> {
         {
             return Ok(Stmt::Block(Box::new(BlockStmt::new(self.block()?))));
         }
+
         self.expression_statement()
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt, LoxError> {
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::LeftParen {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect '(' after if.", t.lexeme),
+                ));
+            }
+        }
+        let condition = self.expression()?;
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::RightParen {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect ')' after if condition.", t.lexeme),
+                ));
+            }
+        }
+        let then_branch = self.statement()?;
+        let else_branch = {
+            match self.tokens.next_if(|t| t.token_type == TokenType::Else) {
+                Some(_t) => Some(self.statement()?),
+                None => None,
+            }
+        };
+
+        Ok(Stmt::If(Box::new(IfStmt::new(
+            condition,
+            then_branch,
+            else_branch,
+        ))))
     }
 
     fn print_statement(&mut self) -> Result<Stmt, LoxError> {
@@ -164,7 +210,7 @@ impl<'a> Parser<'a> {
         while let Some(t) = self.tokens.peek() {
             match t.token_type {
                 TokenType::RightBrace | TokenType::Eof => break,
-                _ => statements.push(self.declaration()?)
+                _ => statements.push(self.declaration()?),
             }
         }
         if let Some(t) = self.tokens.peek() {
@@ -198,7 +244,10 @@ impl<'a> Parser<'a> {
                 } else {
                     return Err(LoxError::new(
                         t.line,
-                        &format!("at {}. Expect ':' after truthy expr in conditional", t.lexeme),
+                        &format!(
+                            "at {}. Expect ':' after truthy expr in conditional",
+                            t.lexeme
+                        ),
                     ));
                 }
             }

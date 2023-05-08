@@ -52,9 +52,19 @@ pub struct FunctionStmt {
 
 #[derive(Debug)]
 pub struct IfStmt {
-    condition: Expr,
-    then_branch: Stmt,
-    else_branch: Stmt,
+    pub condition: Expr,
+    pub then_branch: Stmt,
+    pub else_branch: Option<Stmt>,
+}
+
+impl IfStmt {
+    pub fn new(condition: Expr, then_branch: Stmt, else_branch: Option<Stmt>) -> Self {
+        Self {
+            condition,
+            then_branch,
+            else_branch,
+        }
+    }
 }
 
 #[derive(Debug)]

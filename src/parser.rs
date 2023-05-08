@@ -1,6 +1,6 @@
 use crate::{
     expr::{
-        AssignExpr, BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr, VariableExpr,
+        AssignExpr, BinaryExpr, Expr, GroupingExpr, Literal, ConditionalExpr, UnaryExpr, VariableExpr,
     },
     lox_error::LoxError,
     stmt::{BlockStmt, ExpressionStmt, PrintStmt, Stmt, VarStmt},
@@ -22,8 +22,8 @@ block          → "{" declaration* "}" ;
 printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
-expression     → ternary;
-ternary        → assignment ("?" expression ":" conditional)? ;
+expression     → conditional;
+conditional    → assignment ("?" expression ":" conditional)? ;
 assignment     → IDENTIFIER "=" assignment
                | equality ;
 equality       → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -181,10 +181,10 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> Result<Expr, LoxError> {
-        self.ternary()
+        self.conditional()
     }
 
-    fn ternary(&mut self) -> Result<Expr, LoxError> {
+    fn conditional(&mut self) -> Result<Expr, LoxError> {
         let mut expr = self.assignment()?; // condition
 
         if let Some(_t) = self
@@ -198,12 +198,12 @@ impl<'a> Parser<'a> {
                 } else {
                     return Err(LoxError::new(
                         t.line,
-                        &format!("at {}. Expect ':' after truthy expr in ternary", t.lexeme),
+                        &format!("at {}. Expect ':' after truthy expr in conditional", t.lexeme),
                     ));
                 }
             }
-            let right = self.ternary()?;
-            expr = Expr::Ternary(Box::new(TernaryExpr::new(expr, left, right)))
+            let right = self.conditional()?;
+            expr = Expr::Conditional(Box::new(ConditionalExpr::new(expr, left, right)))
         }
         Ok(expr)
     }
@@ -394,7 +394,7 @@ impl<'a> Parser<'a> {
 //     }
 
 //     #[test]
-//     fn test_ternary() {
+//     fn test_conditional() {
 //         let e = parse_expression("5 < 6 ? 1 - 2 : 4 * 3");
 //         assert_eq!(e.unwrap().to_string(), "(?: (< 5 6) (- 1 2) (* 4 3))")
 //     }

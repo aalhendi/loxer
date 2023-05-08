@@ -152,7 +152,7 @@ impl Interpreter {
                     _ => unreachable!("Invalid operator?"),
                 }
             }
-            Expr::Ternary(e) => {
+            Expr::Conditional(e) => {
                 let condition = self.evaluate(&e.condition)?;
                 if self.is_truthy(condition) {
                     Ok(self.evaluate(&e.left)?)

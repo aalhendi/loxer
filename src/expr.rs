@@ -29,6 +29,7 @@ pub enum Expr {
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
     // Call,
+    Conditional(Box<ConditionalExpr>), // Ternary
     // Get,
     Grouping(Box<GroupingExpr>),
     Literal(Literal),
@@ -36,7 +37,6 @@ pub enum Expr {
     // Set,
     // Super,
     // This,
-    Ternary(Box<TernaryExpr>),
     Unary(Box<UnaryExpr>),
     Variable(Box<VariableExpr>),
 }
@@ -50,9 +50,9 @@ impl Display for Expr {
             expr = match self {
                 Expr::Assign(e) => format!("{e}"),
                 Expr::Binary(e) => format!("{e}"),
+                Expr::Conditional(e) => format!("{e}"),
                 Expr::Grouping(e) => format!("{e}"),
                 Expr::Literal(e) => format!("{e}"),
-                Expr::Ternary(e) => format!("{e}"),
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
             }
@@ -92,13 +92,13 @@ impl Display for BinaryExpr {
 }
 
 #[derive(Debug)]
-pub struct TernaryExpr {
+pub struct ConditionalExpr {
     pub condition: Expr,
     pub left: Expr,
     pub right: Expr,
 }
 
-impl TernaryExpr {
+impl ConditionalExpr {
     pub fn new(condition: Expr, left: Expr, right: Expr) -> Self {
         Self {
             condition,
@@ -112,7 +112,7 @@ impl TernaryExpr {
     // }
 }
 
-impl Display for TernaryExpr {
+impl Display for ConditionalExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -234,9 +234,9 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
         let res = match expr {
             Expr::Assign(e) => parenthesize(&e.name.lexeme, &[&e.value]), // TODO: Check
             Expr::Binary(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
+            Expr::Conditional(e) => parenthesize("?:", &[&e.condition, &e.left, &e.right]),
             Expr::Grouping(e) => parenthesize("group", &[&e.expression]),
             Expr::Literal(l) => format!("{l}"),
-            Expr::Ternary(e) => parenthesize("?:", &[&e.condition, &e.left, &e.right]),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),
         };
@@ -257,11 +257,11 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             Expr::Binary(e) => {
                 format!("{} {} {}", e.left, e.right, e.operator.lexeme)
             }
+            Expr::Conditional(_e) => todo!("RPN for conditional expressions"), // TODO: RPN isn't expressive enough for ternary?
             Expr::Grouping(e) => format!("{} group", e.expression),
             Expr::Literal(l) => {
                 format!("{l}")
             }
-            Expr::Ternary(_e) => todo!("RPN for ternary expressions"), // TODO: RPN isn't expressive enough for ternary?
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
             Expr::Variable(_e) => todo!(),
         };
@@ -275,7 +275,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
 #[cfg(test)]
 mod tests {
     use crate::{
-        expr::{BinaryExpr, Expr, GroupingExpr, Literal, TernaryExpr, UnaryExpr},
+        expr::{BinaryExpr, Expr, GroupingExpr, Literal, ConditionalExpr, UnaryExpr},
         token::{Token, TokenType},
     };
 
@@ -306,7 +306,7 @@ mod tests {
         BinaryExpr::new(left, Token::new(TokenType::Star, "*".to_owned(), 1), right)
     }
 
-    fn build_e3() -> TernaryExpr {
+    fn build_e3() -> ConditionalExpr {
         let condition = Expr::Binary(Box::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(5.0)),
             Token::new(TokenType::Greater, ">".to_owned(), 1),
@@ -322,7 +322,7 @@ mod tests {
             Token::new(TokenType::Minus, "-".to_owned(), 1),
             Expr::Literal(Literal::Number(3.0)),
         )));
-        TernaryExpr::new(condition, left, right)
+        ConditionalExpr::new(condition, left, right)
     }
 
     #[test]

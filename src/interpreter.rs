@@ -39,7 +39,7 @@ impl Interpreter {
             Stmt::Function(_) => todo!(),
             Stmt::If(s) => {
                 let condition_expr = self.evaluate(&s.condition)?;
-                if self.is_truthy(condition_expr) {
+                if self.is_truthy(&condition_expr) {
                     self.execute(&s.then_branch)?;
                 } else if let Some(else_branch) = &s.else_branch {
                     self.execute(else_branch)?;
@@ -155,13 +155,13 @@ impl Interpreter {
                             ),
                         )),
                     },
-                    TokenType::Bang => Ok(Literal::Boolean(!self.is_truthy(right))),
+                    TokenType::Bang => Ok(Literal::Boolean(!self.is_truthy(&right))),
                     _ => unreachable!("Invalid operator?"),
                 }
             }
             Expr::Conditional(e) => {
                 let condition = self.evaluate(&e.condition)?;
-                if self.is_truthy(condition) {
+                if self.is_truthy(&condition) {
                     Ok(self.evaluate(&e.left)?)
                 } else {
                     Ok(self.evaluate(&e.right)?)
@@ -173,6 +173,17 @@ impl Interpreter {
                 let value = self.evaluate(&e.value)?;
                 self.environment.assign(e.name.clone(), value.clone())?;
                 Ok(value)
+            }
+            Expr::Logical(e) => {
+                let left = self.evaluate(&e.left)?;
+                if e.operator.token_type == TokenType::Or {
+                    if self.is_truthy(&left) {
+                        return Ok(left);
+                    }
+                } else if !self.is_truthy(&left) {
+                    return Ok(left);
+                }
+                self.evaluate(&e.right)
             }
         }
     }
@@ -196,9 +207,9 @@ impl Interpreter {
     }
 
     /// Lox's (and Ruby's) definition of truthy. Only ``false`` and ``nil`` are falsey.
-    fn is_truthy(&self, e: Literal) -> bool {
+    fn is_truthy(&self, e: &Literal) -> bool {
         match e {
-            Literal::Boolean(b) => b,
+            Literal::Boolean(b) => *b,
             Literal::Nil => false,
             Literal::Identifier(_) | Literal::String(_) | Literal::Number(_) => true,
         }

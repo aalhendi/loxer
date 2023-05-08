@@ -1,7 +1,7 @@
 use crate::{
     expr::{
-        AssignExpr, BinaryExpr, ConditionalExpr, Expr, GroupingExpr, Literal, UnaryExpr,
-        VariableExpr,
+        AssignExpr, BinaryExpr, ConditionalExpr, Expr, GroupingExpr, Literal, LogicalExpr,
+        UnaryExpr, VariableExpr,
     },
     lox_error::LoxError,
     stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt},
@@ -30,7 +30,9 @@ varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 expression     → conditional;
 conditional    → assignment ("?" expression ":" conditional)? ;
 assignment     → IDENTIFIER "=" assignment
-               | equality ;
+               | logic_or ;
+logic_or       → logic_and ( "or" logic_and )* ;
+logic_and      → equality ( "and" equality )* ;
 equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
@@ -258,7 +260,7 @@ impl<'a> Parser<'a> {
     }
 
     fn assignment(&mut self) -> Result<Expr, LoxError> {
-        let expr = self.equality()?;
+        let expr = self.logic_or()?;
 
         if let Some(t) = self.tokens.peek() {
             if t.token_type == TokenType::Equal {
@@ -279,6 +281,36 @@ impl<'a> Parser<'a> {
             }
         }
 
+        Ok(expr)
+    }
+
+    fn logic_or(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.logic_and()?;
+
+        while let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Or {
+                let operator = self.tokens.next().unwrap();
+                let right = self.logic_and()?;
+                expr = Expr::Logical(Box::new(LogicalExpr::new(expr, operator.clone(), right)));
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+
+    fn logic_and(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.equality()?;
+
+        while let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::And {
+                let operator = self.tokens.next().unwrap();
+                let right = self.equality()?;
+                expr = Expr::Logical(Box::new(LogicalExpr::new(expr, operator.clone(), right)));
+            } else {
+                break;
+            }
+        }
         Ok(expr)
     }
 

@@ -33,7 +33,7 @@ pub enum Expr {
     // Get,
     Grouping(Box<GroupingExpr>),
     Literal(Literal),
-    // Logical,
+    Logical(Box<LogicalExpr>),
     // Set,
     // Super,
     // This,
@@ -53,6 +53,7 @@ impl Display for Expr {
                 Expr::Conditional(e) => format!("{e}"),
                 Expr::Grouping(e) => format!("{e}"),
                 Expr::Literal(e) => format!("{e}"),
+                Expr::Logical(e) => format!("{e}"),
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
             }
@@ -161,6 +162,37 @@ impl Display for LiteralExpr {
 }
 
 #[derive(Debug)]
+pub struct LogicalExpr {
+    pub left: Expr,
+    pub operator: Token,
+    pub right: Expr,
+}
+
+impl LogicalExpr {
+    pub fn new(left: Expr, operator: Token, right: Expr) -> Self {
+        Self {
+            left,
+            operator,
+            right,
+        }
+    }
+
+    fn to_rpn(&self) -> String {
+        walk_rpn(&self.operator.lexeme, &[&self.left, &self.right])
+    }
+}
+
+impl Display for LogicalExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            parenthesize(&self.operator.lexeme, &[&self.left, &self.right])
+        )
+    }
+}
+
+#[derive(Debug)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Expr,
@@ -193,13 +225,9 @@ impl VariableExpr {
     }
 }
 
-impl Display for VariableExpr{
+impl Display for VariableExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            parenthesize(&self.name.lexeme, &[])
-        )
+        write!(f, "{}", parenthesize(&self.name.lexeme, &[]))
     }
 }
 
@@ -217,11 +245,7 @@ impl AssignExpr {
 
 impl Display for AssignExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            parenthesize(&self.name.lexeme, &[&self.value])
-        )
+        write!(f, "{}", parenthesize(&self.name.lexeme, &[&self.value]))
     }
 }
 
@@ -237,6 +261,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Conditional(e) => parenthesize("?:", &[&e.condition, &e.left, &e.right]),
             Expr::Grouping(e) => parenthesize("group", &[&e.expression]),
             Expr::Literal(l) => format!("{l}"),
+            Expr::Logical(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),
         };
@@ -262,6 +287,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => {
                 format!("{l}")
             }
+            Expr::Logical(e) => format!("{} {} {}", e.left, e.right, e.operator.lexeme),
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
             Expr::Variable(_e) => todo!(),
         };
@@ -275,7 +301,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
 #[cfg(test)]
 mod tests {
     use crate::{
-        expr::{BinaryExpr, Expr, GroupingExpr, Literal, ConditionalExpr, UnaryExpr},
+        expr::{BinaryExpr, ConditionalExpr, Expr, GroupingExpr, Literal, UnaryExpr},
         token::{Token, TokenType},
     };
 

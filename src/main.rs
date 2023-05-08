@@ -11,10 +11,10 @@ mod scanner;
 use scanner::Scanner;
 mod interpreter;
 use interpreter::Interpreter;
+mod environment;
 mod expr;
 mod parser;
 mod stmt;
-mod environment;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

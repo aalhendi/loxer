@@ -98,6 +98,12 @@ impl VarStmt {
 
 #[derive(Debug)]
 pub struct WhileStmt {
-    condition: Expr,
-    body: Stmt,
+    pub condition: Expr,
+    pub body: Stmt,
+}
+
+impl WhileStmt {
+    pub fn new(condition: Expr, body: Stmt) -> Self {
+        Self { condition, body }
+    }
 }

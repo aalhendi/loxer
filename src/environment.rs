@@ -1,10 +1,10 @@
 use crate::{expr::Literal, lox_error::LoxError, token::Token};
 use std::collections::{hash_map::Entry::Occupied, HashMap};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Environment {
     values: HashMap<String, Literal>,
-    enclosing: Option<Box<Environment>>,
+    pub enclosing: Option<Box<Environment>>,
 }
 
 impl Environment {

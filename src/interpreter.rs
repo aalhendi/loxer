@@ -27,10 +27,7 @@ impl Interpreter {
     fn execute(&mut self, s: &Stmt) -> Result<(), LoxError> {
         match s {
             Stmt::Block(s) => {
-                self.execute_block(
-                    &s.statements,
-                    Environment::new(Some(Box::new(self.environment.clone()))),
-                )?;
+                self.execute_block(&s.statements)?;
             }
             Stmt::Class(_) => todo!(),
             Stmt::Expression(s) => {
@@ -58,24 +55,29 @@ impl Interpreter {
                 };
                 self.environment.define(&s.name.lexeme, value);
             }
-            Stmt::While(_) => todo!(),
+            Stmt::While(s) => {
+                let mut condition = self.evaluate(&s.condition)?;
+                while self.is_truthy(&condition) {
+                    self.execute(&s.body)?;
+                    condition = self.evaluate(&s.condition)?;
+                }
+            }
         };
         Ok(())
     }
 
-    fn execute_block(
-        &mut self,
-        statements: &[Stmt],
-        environment: Environment,
-    ) -> Result<(), LoxError> {
-        let previous = self.environment.clone();
-        self.environment = environment;
-        for s in statements {
-            self.execute(s)?;
-        }
-        self.environment = previous;
+    fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
+        // Takes self.environment and sets #Default in its place temporarily
+        let tmp = std::mem::take(&mut self.environment);
+        // Create a new nested environment (scope) for the block. Set enclosing to be the parent scope.
+        self.environment = Environment::new(Some(Box::new(tmp)));
+        let result = statements.iter().try_for_each(|s| self.execute(s));
+        // Set environment back to the parent scope the same way.
+        // NOTE: compiler should realise the tmp store is being elided and remove it in release mode. This just gets around the borrow checker and avoids cloning
+        let tmp = std::mem::take(&mut self.environment);
+        self.environment = *tmp.enclosing.unwrap();
 
-        Ok(())
+        result
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Literal, LoxError> {

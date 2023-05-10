@@ -4,7 +4,7 @@ use crate::{
         UnaryExpr, VariableExpr,
     },
     lox_error::LoxError,
-    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt},
+    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
     token::{Token, TokenType},
 };
 
@@ -21,6 +21,10 @@ statement      → exprStmt
                | ifStmt
                | printStmt
                | block ;
+forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
+                 expression? ";"
+                 expression? ")" statement ;
+whileStmt      → "while" "(" expression ")" statement ;
 ifStmt         → "if" "(" expression ")" statement
                ( "else" statement )? ;
 block          → "{" declaration* "}" ;
@@ -130,6 +134,12 @@ impl<'a> Parser<'a> {
         if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Print) {
             return self.print_statement();
         }
+        if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::While) {
+            return self.while_statement();
+        }
+        if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::For) {
+            return self.for_statement();
+        }
         if let Some(_t) = self
             .tokens
             .next_if(|t| t.token_type == TokenType::LeftBrace)
@@ -138,6 +148,129 @@ impl<'a> Parser<'a> {
         }
 
         self.expression_statement()
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, LoxError> {
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::LeftParen {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect '(' after `while`.", t.lexeme),
+                ));
+            }
+        }
+        let condition = self.expression()?;
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::RightParen {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect ')' after condition", t.lexeme),
+                ));
+            }
+        }
+        let body = self.statement()?;
+
+        Ok(Stmt::While(Box::new(WhileStmt::new(condition, body))))
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, LoxError> {
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::LeftParen {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect '(' after `for`.", t.lexeme),
+                ));
+            }
+        }
+
+        let initializer = {
+            if let Some(t) = self.tokens.peek() {
+                if t.token_type == TokenType::Semicolon {
+                    self.tokens.next();
+                    None
+                } else if t.token_type == TokenType::Var {
+                    self.tokens.next();
+                    Some(self.var_declaration()?)
+                } else {
+                    Some(self.expression_statement()?)
+                }
+            } else {
+                unreachable!("Ran out of tokens")
+            }
+        };
+
+        // Either there is a condition or it an infinite loop (true)
+        let condition = {
+            if let Some(t) = self.tokens.peek() {
+                if t.token_type != TokenType::Semicolon {
+                    self.expression()?
+                } else {
+                    Expr::Literal(Literal::Boolean(true))
+                }
+            } else {
+                unreachable!("Ran out of tokens")
+            }
+        };
+
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Semicolon {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect ';' after loop condition.", t.lexeme),
+                ));
+            }
+        }
+
+        let increment = {
+            if let Some(t) = self.tokens.peek() {
+                if t.token_type != TokenType::RightParen {
+                    Some(self.expression()?)
+                } else {
+                    None
+                }
+            } else {
+                unreachable!("Ran out of tokens")
+            }
+        };
+
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::RightParen {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("at {} Expect ')' after for clauses.", t.lexeme),
+                ));
+            }
+        }
+
+        let mut body = self.statement()?;
+
+        // If an increment stmt exists, append it so it executes after the body
+        if let Some(increment) = increment {
+            let stmts = vec![
+                body,
+                Stmt::Expression(Box::new(ExpressionStmt::new(increment))),
+            ];
+            body = Stmt::Block(Box::new(BlockStmt::new(stmts)));
+        }
+
+        body = Stmt::While(Box::new(WhileStmt::new(condition, body)));
+
+        // If an initializer exists, run it first, then execute the loop (fancy while loop)
+        if let Some(initializer) = initializer {
+            body = Stmt::Block(Box::new(BlockStmt::new(vec![initializer, body])))
+        }
+
+        Ok(body)
     }
 
     fn if_statement(&mut self) -> Result<Stmt, LoxError> {
@@ -270,7 +403,7 @@ impl<'a> Parser<'a> {
 
                 match expr {
                     Expr::Variable(s) => {
-                        return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))))
+                        return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))));
                     }
                     _ => eprintln!(
                         "{}",

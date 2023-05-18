@@ -1,7 +1,7 @@
 use crate::{
     expr::{
-        AssignExpr, BinaryExpr, ConditionalExpr, Expr, GroupingExpr, Literal, LogicalExpr,
-        UnaryExpr, VariableExpr,
+        AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, GroupingExpr, Literal,
+        LogicalExpr, UnaryExpr, VariableExpr,
     },
     lox_error::LoxError,
     stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
@@ -41,8 +41,9 @@ equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" ) unary )* ;
-unary          → ( "!" | "-" ) unary
-               | primary ;
+unary          → ( "!" | "-" ) unary | call ;
+call           → primary ( "(" arguments? ")" )* ;
+arguments      → expression ( "," expression )* ;
 primary        → NUMBER | STRING | "true" | "false" | "nil"
                | "(" expression ")"
                | IDENTIFIER ;
@@ -515,7 +516,59 @@ impl<'a> Parser<'a> {
             let e = Expr::Unary(Box::new(UnaryExpr::new(operator.clone(), right)));
             return Ok(e);
         }
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Expr, LoxError> {
+        let mut expr = self.primary()?;
+
+        // Deliberate loop. Setting up for parsing object properties later on.
+        loop {
+            if let Some(t) = self.tokens.peek() {
+                if t.token_type == TokenType::LeftParen {
+                    self.tokens.next();
+                    expr = self.finish_call(expr)?;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, LoxError> {
+        let mut arguments = Vec::new();
+
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type != TokenType::RightParen {
+                // Do-while
+                loop {
+                    arguments.push(self.expression()?);
+                    self.tokens.next();
+                    if let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        let paren = if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::RightParen {
+                self.tokens.next().unwrap()
+            } else {
+                return Err(LoxError::new(t.line, "Expect ')' after arguments."));
+            }
+        } else {
+            unreachable!("ran out of tokens lol")
+        };
+
+        Ok(Expr::Call(Box::new(CallExpr::new(
+            callee,
+            paren.clone(),
+            arguments,
+        ))))
     }
 
     // TODO: Error propagation and handle panics.

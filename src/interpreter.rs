@@ -1,6 +1,9 @@
+use std::rc::Rc;
+
 use crate::{
     environment::Environment,
     expr::{Expr, Literal},
+    functions::Clock,
     lox_error::LoxError,
     stmt::Stmt,
     token::{Token, TokenType},
@@ -12,9 +15,12 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {
-            environment: Environment::new(None),
-        }
+        let mut environment = Environment::new(None);
+
+        let clock = Literal::Function(Rc::new(Clock));
+        environment.define("clock", clock);
+
+        Self { environment }
     }
 
     pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
@@ -142,6 +148,38 @@ impl Interpreter {
                     _ => unreachable!("Invalid operator?"),
                 }
             }
+            Expr::Call(e) => {
+                let callee = self.evaluate(&e.callee)?;
+                let mut arguments = Vec::new();
+                for arg in &e.arguments {
+                    arguments.push(self.evaluate(arg)?);
+                }
+
+                match callee {
+                    Literal::Identifier(_)
+                    | Literal::Boolean(_)
+                    | Literal::Nil
+                    | Literal::String(_)
+                    | Literal::Number(_) => Err(LoxError::new(
+                        e.paren.line,
+                        "Can only call classes and functions",
+                    )),
+                    Literal::Function(function) => {
+                        if arguments.len() != function.get_arity() {
+                            return Err(LoxError::new(
+                                e.paren.line,
+                                &format!(
+                                    "Expected {} arguments but got {}.",
+                                    function.get_arity(),
+                                    arguments.len()
+                                ),
+                            ));
+                        }
+
+                        function.call(self, arguments)
+                    }
+                }
+            }
             Expr::Grouping(e) => self.evaluate(&e.expression),
             Expr::Literal(e) => Ok(e.clone()), // TODO: ?
             Expr::Unary(e) => {
@@ -213,7 +251,10 @@ impl Interpreter {
         match e {
             Literal::Boolean(b) => *b,
             Literal::Nil => false,
-            Literal::Identifier(_) | Literal::String(_) | Literal::Number(_) => true,
+            Literal::Identifier(_)
+            | Literal::String(_)
+            | Literal::Number(_)
+            | Literal::Function(_) => true,
         }
     }
 

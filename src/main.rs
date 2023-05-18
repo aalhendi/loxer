@@ -13,6 +13,7 @@ mod interpreter;
 use interpreter::Interpreter;
 mod environment;
 mod expr;
+mod functions;
 mod parser;
 mod stmt;
 

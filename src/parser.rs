@@ -18,8 +18,10 @@ program        → statement* EOF ;
 declaration    → varDecl
                | statement ;
 statement      → exprStmt
+               | forStmt
                | ifStmt
                | printStmt
+               | whileStmt
                | block ;
 forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
                  expression? ";"
@@ -32,6 +34,7 @@ printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 expression     → conditional;
+parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 conditional    → assignment ("?" expression ":" conditional)? ;
 assignment     → IDENTIFIER "=" assignment
                | logic_or ;
@@ -523,14 +526,15 @@ impl<'a> Parser<'a> {
         let mut expr = self.primary()?;
 
         // Deliberate loop. Setting up for parsing object properties later on.
+        #[allow(clippy::while_let_loop)]
         loop {
-            if let Some(t) = self.tokens.peek() {
-                if t.token_type == TokenType::LeftParen {
-                    self.tokens.next();
+            if let Some(_t) = self
+                .tokens
+                .next_if(|t| t.token_type == TokenType::LeftParen)
+            {
                     expr = self.finish_call(expr)?;
                 } else {
                     break;
-                }
             }
         }
 
@@ -540,16 +544,12 @@ impl<'a> Parser<'a> {
     fn finish_call(&mut self, callee: Expr) -> Result<Expr, LoxError> {
         let mut arguments = Vec::new();
 
-        if let Some(t) = self.tokens.peek() {
+        if let Some(t) = self.tokens.peek().cloned() {
             if t.token_type != TokenType::RightParen {
                 // Do-while
-                loop {
                     arguments.push(self.expression()?);
-                    self.tokens.next();
-                    if let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma)
-                    {
-                        break;
-                    }
+                while let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma) {
+                    arguments.push(self.expression()?);
                 }
             }
         }

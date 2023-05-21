@@ -36,8 +36,7 @@ impl Display for Literal {
             Literal::Nil => String::from("Nil"),
             Literal::String(s) => format!("\"{s}\""),
             Literal::Number(n) => n.to_string(),
-            // TODO: Should it display fn name?
-            Literal::Function(_f) => "<native fn>".to_string(),
+            Literal::Function(f) => f.to_string(),
         };
         write!(f, "{v}")
     }
@@ -56,6 +55,7 @@ impl PartialEq for Literal {
     }
 }
 
+// TODO: Static lifetime for function thing?
 pub trait LoxCallable {
     fn call(
         &self,
@@ -63,9 +63,10 @@ pub trait LoxCallable {
         arguments: Vec<Literal>,
     ) -> Result<Literal, LoxError>;
     fn get_arity(&self) -> usize;
+    fn to_string(&self) -> String;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
@@ -103,7 +104,7 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpr {
     pub left: Expr,
     pub operator: Token,
@@ -135,7 +136,7 @@ impl Display for BinaryExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallExpr {
     pub callee: Expr,
     pub paren: Token,
@@ -166,7 +167,7 @@ impl CallExpr {
 //     }
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConditionalExpr {
     pub condition: Expr,
     pub left: Expr,
@@ -197,7 +198,7 @@ impl Display for ConditionalExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GroupingExpr {
     pub expression: Expr,
 }
@@ -236,7 +237,7 @@ impl Display for GroupingExpr {
 //     }
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LogicalExpr {
     pub left: Expr,
     pub operator: Token,
@@ -268,7 +269,7 @@ impl Display for LogicalExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Expr,
@@ -291,7 +292,7 @@ impl Display for UnaryExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariableExpr {
     pub name: Token,
 }
@@ -308,7 +309,7 @@ impl Display for VariableExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignExpr {
     pub name: Token,
     pub value: Expr,

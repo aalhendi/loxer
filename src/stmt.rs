@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use crate::{expr::Expr, token::Token};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Block(Box<BlockStmt>),
     Class(Box<ClassStmt>),
@@ -14,7 +14,7 @@ pub enum Stmt {
     While(Box<WhileStmt>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
 }
@@ -25,14 +25,14 @@ impl BlockStmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClassStmt {
     name: Token,
     // superclass: superclass, // TODO: ?
     methods: Vec<Stmt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExpressionStmt {
     pub expression: Expr,
 }
@@ -43,14 +43,20 @@ impl ExpressionStmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionStmt {
-    name: Token,
-    params: Vec<Token>,
-    body: Vec<Stmt>,
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>,
 }
 
-#[derive(Debug)]
+impl FunctionStmt {
+    pub fn new(name: Token, params: &[Token], body: Vec<Stmt>) -> Self {
+        Self { name, params: params.to_vec(), body }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Stmt,
@@ -67,7 +73,7 @@ impl IfStmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PrintStmt {
     pub expression: Expr,
 }
@@ -78,13 +84,13 @@ impl PrintStmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnStmt {
     keyword: Token,
     value: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VarStmt {
     pub name: Token,
     pub initializer: Option<Expr>,
@@ -96,7 +102,7 @@ impl VarStmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Stmt,

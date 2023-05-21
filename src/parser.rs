@@ -4,7 +4,7 @@ use crate::{
         LogicalExpr, UnaryExpr, VariableExpr,
     },
     lox_error::LoxError,
-    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt},
+    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt, FunctionStmt},
     token::{Token, TokenType},
 };
 
@@ -15,7 +15,8 @@ pub struct Parser<'a> {
 
 /*
 program        → statement* EOF ;
-declaration    → varDecl
+declaration    → funDecl
+               | varDecl
                | statement ;
 statement      → exprStmt
                | forStmt
@@ -33,6 +34,7 @@ block          → "{" declaration* "}" ;
 printStmt      → "print" expression ";" ;
 exprStmt       → expression ";" ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+funDecl        → "fun" function ;
 expression     → conditional;
 parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 conditional    → assignment ("?" expression ":" conditional)? ;
@@ -80,6 +82,9 @@ impl<'a> Parser<'a> {
                     return Err(e);
                 }
             }
+        } else if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Fun) {
+            // TODO: Enum?
+            return self.function("function");
         }
         match self.statement() {
             Ok(s) => Ok(s),
@@ -344,6 +349,87 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Expression(Box::new(ExpressionStmt::new(expr))))
     }
 
+    fn function(&mut self, kind: &str) -> Result<Stmt, LoxError> {
+        let name = match self.tokens.peek() {
+            Some(t) => {
+                if let TokenType::Identifier(_) = &t.token_type {
+                    self.tokens.next().unwrap()
+                } else {
+                    return Err(LoxError::new(t.line, &format!("Expect {kind} name.")));
+                }
+            }
+            _ => unreachable!("?"),
+        };
+
+        if let Some(t) = self.tokens.peek() {
+            if let TokenType::LeftParen = &t.token_type {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("Expect `(` after {kind} name."),
+                ));
+            }
+        }
+
+        let mut params = Vec::new();
+        if let Some(t) = self.tokens.peek().cloned() {
+            if t.token_type != TokenType::RightParen {
+                // Do-while
+                if params.len() >= 255 {
+                    return Err(LoxError::new(t.line, "Can't have more than 255 parameters"));
+                }
+                params.push(if let TokenType::Identifier(_) = &t.token_type {
+                    self.tokens.next().unwrap().clone()
+                } else {
+                    return Err(LoxError::new(
+                        t.line,
+                        "Expect parameter name.",
+                    ));
+                });
+                while let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma) {
+                    if params.len() >= 255 {
+                        return Err(LoxError::new(t.line, "Can't have more than 255 parameters"));
+                    }
+                    params.push(if let TokenType::Identifier(_) = &t.token_type {
+                        self.tokens.next().unwrap().clone()
+                    } else {
+                        return Err(LoxError::new(
+                            t.line,
+                            "Expect parameter name.",
+                        ));
+                    });
+                }
+            }
+        }
+
+        if let Some(t) = self.tokens.peek() {
+            if let TokenType::RightParen = &t.token_type {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("Expect `)` after {kind} name."),
+                ));
+            }
+        }
+
+        if let Some(t) = self.tokens.peek() {
+            if let TokenType::LeftBrace = &t.token_type {
+                self.tokens.next();
+            } else {
+                return Err(LoxError::new(
+                    t.line,
+                    &format!("Expect `{{` after {kind} name."),
+                ));
+            }
+        }
+        
+        let body = self.block()?;
+
+        Ok(Stmt::Function(Box::new(FunctionStmt::new(name.clone(), &params, body))))
+    }
+
     fn block(&mut self) -> Result<Vec<Stmt>, LoxError> {
         let mut statements = Vec::new();
         while let Some(t) = self.tokens.peek() {
@@ -532,9 +618,9 @@ impl<'a> Parser<'a> {
                 .tokens
                 .next_if(|t| t.token_type == TokenType::LeftParen)
             {
-                    expr = self.finish_call(expr)?;
-                } else {
-                    break;
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
             }
         }
 
@@ -547,7 +633,7 @@ impl<'a> Parser<'a> {
         if let Some(t) = self.tokens.peek().cloned() {
             if t.token_type != TokenType::RightParen {
                 // Do-while
-                    arguments.push(self.expression()?);
+                arguments.push(self.expression()?);
                 while let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma) {
                     arguments.push(self.expression()?);
                 }

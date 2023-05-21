@@ -3,14 +3,14 @@ use std::rc::Rc;
 use crate::{
     environment::Environment,
     expr::{Expr, Literal},
-    functions::Clock,
+    functions::{Clock, LoxFunction},
     lox_error::LoxError,
     stmt::Stmt,
     token::{Token, TokenType},
 };
 
 pub struct Interpreter {
-    environment: Environment,
+    pub environment: Environment,
 }
 
 impl Interpreter {
@@ -39,7 +39,11 @@ impl Interpreter {
             Stmt::Expression(s) => {
                 self.evaluate(&s.expression)?;
             }
-            Stmt::Function(_) => todo!(),
+            Stmt::Function(s) => {
+                // TODO: Remove clone and use lifetimes
+                let function = LoxFunction::new(*s.clone());
+                self.environment.define(&s.name.lexeme, Literal::Function(Rc::new(function)));
+            },
             Stmt::If(s) => {
                 let condition_expr = self.evaluate(&s.condition)?;
                 if self.is_truthy(&condition_expr) {
@@ -72,7 +76,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
+    pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
         // Takes self.environment and sets #Default in its place temporarily
         let tmp = std::mem::take(&mut self.environment);
         // Create a new nested environment (scope) for the block. Set enclosing to be the parent scope.

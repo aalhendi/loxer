@@ -4,8 +4,10 @@ use crate::{
         LogicalExpr, UnaryExpr, VariableExpr,
     },
     lox_result::LoxResult,
-    lox_error::LoxError,
-    stmt::{BlockStmt, ExpressionStmt, IfStmt, PrintStmt, Stmt, VarStmt, WhileStmt, FunctionStmt},
+    stmt::{
+        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
+        WhileStmt,
+    },
     token::{Token, TokenType},
 };
 
@@ -23,8 +25,10 @@ statement      → exprStmt
                | forStmt
                | ifStmt
                | printStmt
+               | returnStmt
                | whileStmt
                | block ;
+returnStmt     → "return" expression? ";" ;
 forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
                  expression? ";"
                  expression? ")" statement ;
@@ -143,6 +147,11 @@ impl<'a> Parser<'a> {
         }
         if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Print) {
             return self.print_statement();
+        }
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Return {
+                return self.return_statement();
+            }
         }
         if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::While) {
             return self.while_statement();
@@ -335,7 +344,35 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Print(Box::new(PrintStmt::new(value))))
     }
 
-    fn expression_statement(&mut self) -> Result<Stmt, LoxError> {
+    fn return_statement(&mut self) -> Result<Stmt, LoxResult> {
+        let keyword = self.tokens.next().unwrap();
+        let value = match self.tokens.peek() {
+            Some(t) => {
+                if t.token_type != TokenType::Semicolon {
+                    Some(self.expression()?)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+
+        if let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::Semicolon {
+                self.tokens.next();
+            } else {
+                return Err(LoxResult::new_error(
+                    t.line,
+                    &format!("at {}. Expect ';' after return value", t.lexeme),
+                ));
+            }
+        }
+
+        Ok(Stmt::Return(Box::new(ReturnStmt::new(
+            keyword.to_owned(),
+            value,
+        ))))
+    }
 
     fn expression_statement(&mut self) -> Result<Stmt, LoxResult> {
         let expr = self.expression()?;

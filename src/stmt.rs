@@ -91,7 +91,13 @@ impl PrintStmt {
 #[derive(Debug, Clone)]
 pub struct ReturnStmt {
     keyword: Token,
-    value: Expr,
+    pub value: Option<Expr>,
+}
+
+impl ReturnStmt {
+    pub fn new(keyword: Token, value: Option<Expr>) -> Self {
+        Self { keyword, value }
+    }
 }
 
 #[derive(Debug, Clone)]

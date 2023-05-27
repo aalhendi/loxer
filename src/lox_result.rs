@@ -1,13 +1,12 @@
+use crate::expr::Literal;
 use std::fmt::Display;
-
-// use crate::expr::Literal;
 
 #[derive(Debug)]
 
 pub enum LoxResult {
     Error { line: u32, message: String },
-    // Return(Literal),
-    // Break
+    Return(Literal),
+    // Break // TODO:
 }
 
 impl LoxResult {
@@ -25,7 +24,7 @@ impl Display for LoxResult {
             LoxResult::Error { line, message } => {
                 write!(f, "Line {line}: {message}",)
             }
-            // LoxResult::Return(l) => write!(f, "{l}",),
+            LoxResult::Return(l) => write!(f, "{l}",),
         }
     }
 }

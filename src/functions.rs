@@ -44,7 +44,7 @@ impl LoxFunction {
 }
 
 impl LoxCallable for LoxFunction {
-    // TODO: Simply environment refs?
+    // TODO: Simplify environment refs?
     // author does Environment environment = new Environment(interpreter.globals); {java}
     fn call(
         &self,
@@ -61,13 +61,18 @@ impl LoxCallable for LoxFunction {
                 .define(&p.lexeme, arguments.get(i).unwrap().clone())
         }
 
-        interpreter.execute_block(&self.declaration.body)?;
-        // Set environment back to the parent scope the same way.
-        // NOTE: compiler should realise the tmp store is being elided and remove it in release mode. This just gets around the borrow checker and avoids cloning
-        let tmp = std::mem::take(&mut interpreter.environment);
-        interpreter.environment = *tmp.enclosing.unwrap();
-
-        Ok(Literal::Nil)
+        match interpreter.execute_block(&self.declaration.body) {
+            Err(LoxResult::Return(v)) => {
+                // Set environment back to the parent scope the same way.
+                // NOTE: compiler should realise the tmp store is being elided and remove it in release mode. This just gets around the borrow checker and avoids cloning
+                let tmp = std::mem::take(&mut interpreter.environment);
+                interpreter.environment = *tmp.enclosing.unwrap();
+                // Return stuff
+                Ok(v)
+            }
+            Err(e) => Err(e),
+            Ok(_) => Ok(Literal::Nil),
+        }
     }
 
     fn get_arity(&self) -> usize {

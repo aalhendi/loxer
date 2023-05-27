@@ -40,7 +40,6 @@ impl Interpreter {
                 self.evaluate(&s.expression)?;
             }
             Stmt::Function(s) => {
-                // TODO: Remove clone and use lifetimes
                 let function = LoxFunction::new(*s.clone());
                 self.environment
                     .define(&s.name.lexeme, Literal::Function(Rc::new(function)));
@@ -57,7 +56,13 @@ impl Interpreter {
                 let value = self.evaluate(&s.expression)?;
                 println!("{value}");
             }
-            Stmt::Return(_) => todo!(),
+            Stmt::Return(s) => {
+                if let Some(v) = &s.value {
+                    return Err(LoxResult::Return(self.evaluate(v)?));
+                } else {
+                    return Err(LoxResult::Return(Literal::Nil));
+                }
+            }
             Stmt::Var(s) => {
                 let value = if let Some(initializer) = &s.initializer {
                     self.evaluate(initializer)?

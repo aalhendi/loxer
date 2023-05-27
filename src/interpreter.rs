@@ -4,7 +4,7 @@ use crate::{
     environment::Environment,
     expr::{Expr, Literal},
     functions::{Clock, LoxFunction},
-    lox_error::LoxError,
+    lox_result::LoxResult,
     stmt::Stmt,
     token::{Token, TokenType},
 };
@@ -23,14 +23,14 @@ impl Interpreter {
         Self { environment }
     }
 
-    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxResult> {
         for s in statements {
             self.execute(s)?;
         }
         Ok(())
     }
 
-    fn execute(&mut self, s: &Stmt) -> Result<(), LoxError> {
+    fn execute(&mut self, s: &Stmt) -> Result<(), LoxResult> {
         match s {
             Stmt::Block(s) => {
                 self.execute_block(&s.statements)?;
@@ -42,8 +42,9 @@ impl Interpreter {
             Stmt::Function(s) => {
                 // TODO: Remove clone and use lifetimes
                 let function = LoxFunction::new(*s.clone());
-                self.environment.define(&s.name.lexeme, Literal::Function(Rc::new(function)));
-            },
+                self.environment
+                    .define(&s.name.lexeme, Literal::Function(Rc::new(function)));
+            }
             Stmt::If(s) => {
                 let condition_expr = self.evaluate(&s.condition)?;
                 if self.is_truthy(&condition_expr) {
@@ -76,7 +77,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
+    pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), LoxResult> {
         // Takes self.environment and sets #Default in its place temporarily
         let tmp = std::mem::take(&mut self.environment);
         // Create a new nested environment (scope) for the block. Set enclosing to be the parent scope.
@@ -90,7 +91,7 @@ impl Interpreter {
         result
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Literal, LoxError> {
+    fn evaluate(&mut self, expr: &Expr) -> Result<Literal, LoxResult> {
         match expr {
             Expr::Binary(e) => {
                 let left = self.evaluate(&e.left)?;
@@ -103,7 +104,7 @@ impl Interpreter {
                     TokenType::Slash => {
                         let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         if n2 == 0.0 {
-                            return Err(LoxError::new(e.operator.line, "Division by zero"));
+                            return Err(LoxResult::new_error(e.operator.line, "Division by zero"));
                         }
                         Ok(Literal::Number(n1 / n2))
                     }
@@ -141,7 +142,7 @@ impl Interpreter {
                             Ok(Literal::String(format!("{n}{s}")))
                         }
                         (Literal::Number(n1), Literal::Number(n2)) => Ok(Literal::Number(n1 + n2)),
-                        _ => Err(LoxError::new(
+                        _ => Err(LoxResult::new_error(
                             e.operator.line,
                             &format!(
                                 "Operands must both be numbers. Operator: `{lexeme}`",
@@ -164,13 +165,13 @@ impl Interpreter {
                     | Literal::Boolean(_)
                     | Literal::Nil
                     | Literal::String(_)
-                    | Literal::Number(_) => Err(LoxError::new(
+                    | Literal::Number(_) => Err(LoxResult::new_error(
                         e.paren.line,
                         "Can only call classes and functions",
                     )),
                     Literal::Function(function) => {
                         if arguments.len() != function.get_arity() {
-                            return Err(LoxError::new(
+                            return Err(LoxResult::new_error(
                                 e.paren.line,
                                 &format!(
                                     "Expected {} arguments but got {}.",
@@ -191,7 +192,7 @@ impl Interpreter {
                 match e.operator.token_type {
                     TokenType::Minus => match right {
                         Literal::Number(n) => Ok(Literal::Number(-n)),
-                        _ => Err(LoxError::new(
+                        _ => Err(LoxResult::new_error(
                             e.operator.line,
                             &format!(
                                 "Operand must be a number. Operator: `{lexeme}`",
@@ -237,10 +238,10 @@ impl Interpreter {
         left: &Literal,
         right: &Literal,
         op: &Token,
-    ) -> Result<(f64, f64), LoxError> {
+    ) -> Result<(f64, f64), LoxResult> {
         match (left, right) {
             (Literal::Number(n1), Literal::Number(n2)) => Ok((*n1, *n2)),
-            _ => Err(LoxError::new(
+            _ => Err(LoxResult::new_error(
                 op.line,
                 &format!(
                     "Operands must be numbers. Operator: `{lexeme}`",

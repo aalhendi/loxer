@@ -3,8 +3,8 @@ use std::{
     io::{self, BufRead, Write},
 };
 
-mod lox_error;
-use lox_error::LoxError;
+mod lox_result;
+use lox_result::LoxResult;
 mod token;
 use token::{Token, TokenType};
 mod scanner;
@@ -68,8 +68,8 @@ fn run_prompt() {
     }
 }
 
-/// On error, returns an instance of LoxError and an ExitCode
-fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), (LoxError, i32)> {
+/// On error, returns an instance of LoxResult::Error and an ExitCode
+fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), (LoxResult, i32)> {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens().to_vec();
     let mut parser = parser::Parser::new(&tokens);

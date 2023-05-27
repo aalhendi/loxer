@@ -1,4 +1,4 @@
-use super::{LoxError, Token, TokenType};
+use super::{LoxResult, Token, TokenType};
 use std::{collections::HashMap, iter::Peekable, str::Chars};
 
 pub struct Scanner<'a> {
@@ -115,7 +115,8 @@ impl Scanner<'_> {
                 '"' => {
                     // TODO: Handle escape sequences
                     lexeme = String::new(); // reset text to trim first quote
-                    let mut return_val = Err(LoxError::new(self.line, "Unterminated string."));
+                    let mut return_val =
+                        Err(LoxResult::new_error(self.line, "Unterminated string."));
                     for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
                             return_val = Ok(Some(TokenType::String(lexeme.clone())));
@@ -165,7 +166,7 @@ impl Scanner<'_> {
                         None => Ok(Some(TokenType::Identifier(lexeme.clone()))),
                     }
                 }
-                _ => Err(LoxError::new(
+                _ => Err(LoxResult::new_error(
                     self.line,
                     &format!("Unexpected Character \"{ch}\""),
                 )),
@@ -188,7 +189,7 @@ impl Scanner<'_> {
         &self.tokens
     }
 
-    fn scan_block_comment(&mut self) -> Result<(), LoxError> {
+    fn scan_block_comment(&mut self) -> Result<(), LoxResult> {
         // Consume till loop broken or EOF
         while let Some(next_ch) = self.source.next() {
             if next_ch == '\n' {
@@ -207,7 +208,10 @@ impl Scanner<'_> {
                 }
             }
         }
-        Err(LoxError::new(self.line, "Unterminated block comment"))
+        Err(LoxResult::new_error(
+            self.line,
+            "Unterminated block comment",
+        ))
     }
 }
 

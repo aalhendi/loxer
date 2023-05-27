@@ -52,7 +52,11 @@ pub struct FunctionStmt {
 
 impl FunctionStmt {
     pub fn new(name: Token, params: &[Token], body: Vec<Stmt>) -> Self {
-        Self { name, params: params.to_vec(), body }
+        Self {
+            name,
+            params: params.to_vec(),
+            body,
+        }
     }
 }
 

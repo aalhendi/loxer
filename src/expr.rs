@@ -1,4 +1,4 @@
-use crate::{interpreter::Interpreter, lox_error::LoxError, token::Token};
+use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
 use std::{
     fmt::{self, Display, Formatter},
     rc::Rc,
@@ -61,7 +61,7 @@ pub trait LoxCallable {
         &self,
         interpreter: &mut Interpreter,
         arguments: Vec<Literal>,
-    ) -> Result<Literal, LoxError>;
+    ) -> Result<Literal, LoxResult>;
     fn get_arity(&self) -> usize;
     fn to_string(&self) -> String;
 }

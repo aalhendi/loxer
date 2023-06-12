@@ -15,6 +15,7 @@ mod environment;
 mod expr;
 mod functions;
 mod parser;
+mod resolver;
 mod stmt;
 
 fn main() {
@@ -76,6 +77,11 @@ fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), (LoxResult, i3
     let statements = match parser.parse() {
         Ok(s) => s,
         Err(err) => return Err((err, 65)),
+    };
+    let mut resolver = resolver::Resolver::new(interpreter);
+    match resolver.resolve_stmts(&statements) {
+        Ok(_) => {}
+        Err(e) => return Err((e, 70)), // TODO: Err code?
     };
     match interpreter.interpret(&statements) {
         Ok(_) => Ok(()),

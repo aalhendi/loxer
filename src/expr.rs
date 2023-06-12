@@ -15,6 +15,17 @@ pub enum Literal {
     Function(Rc<dyn LoxCallable>),
 }
 
+// TODO: Verify
+impl Eq for Literal {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl std::hash::Hash for Literal {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
 impl core::fmt::Debug for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -23,7 +34,7 @@ impl core::fmt::Debug for Literal {
             Self::Nil => write!(f, "Nil"),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
-            Self::Function(_arg0) => todo!("fixme"),
+            Self::Function(arg0) => f.debug_tuple("Function").field(&arg0.to_string()).finish(),
         }
     }
 }
@@ -66,7 +77,7 @@ pub trait LoxCallable {
     fn to_string(&self) -> String;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Assign(Box<AssignExpr>),
     Binary(Box<BinaryExpr>),
@@ -104,7 +115,7 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct BinaryExpr {
     pub left: Expr,
     pub operator: Token,
@@ -136,7 +147,7 @@ impl Display for BinaryExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct CallExpr {
     pub callee: Expr,
     pub paren: Token,
@@ -167,7 +178,7 @@ impl CallExpr {
 //     }
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct ConditionalExpr {
     pub condition: Expr,
     pub left: Expr,
@@ -198,7 +209,7 @@ impl Display for ConditionalExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct GroupingExpr {
     pub expression: Expr,
 }
@@ -237,7 +248,7 @@ impl Display for GroupingExpr {
 //     }
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct LogicalExpr {
     pub left: Expr,
     pub operator: Token,
@@ -269,7 +280,7 @@ impl Display for LogicalExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Expr,
@@ -292,7 +303,7 @@ impl Display for UnaryExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct VariableExpr {
     pub name: Token,
 }
@@ -309,7 +320,7 @@ impl Display for VariableExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct AssignExpr {
     pub name: Token,
     pub value: Expr,

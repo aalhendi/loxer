@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Debug, Clone)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
@@ -75,4 +75,16 @@ pub enum TokenType {
     Var,
     While,
     Eof,
+}
+
+// TODO: Verify
+impl Eq for TokenType {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+// TODO: Verify
+impl std::hash::Hash for TokenType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
 }

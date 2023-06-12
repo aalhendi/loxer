@@ -1,8 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     environment::Environment,
-    expr::{Expr, Literal},
+    expr::{Expr, Literal, VariableExpr},
     functions::{Clock, LoxFunction},
     lox_result::LoxResult,
     stmt::Stmt,
@@ -11,6 +11,8 @@ use crate::{
 
 pub struct Interpreter {
     pub environment: Rc<RefCell<Environment>>,
+    // ERROR(?): Expr needs to impl Hash
+    locals: HashMap<Expr, usize>,
 }
 
 impl Interpreter {
@@ -22,6 +24,7 @@ impl Interpreter {
 
         Self {
             environment: Rc::new(RefCell::new(environment)),
+            locals: HashMap::new(),
         }
     }
 
@@ -85,14 +88,17 @@ impl Interpreter {
         Ok(())
     }
 
+    pub fn resolve(&mut self, expr: Expr, depth: usize) {
+        self.locals.insert(expr, depth);
+    }
+
     pub fn execute_block(
         &mut self,
         statements: &[Stmt],
         environment: Rc<RefCell<Environment>>,
     ) -> Result<(), LoxResult> {
         let previous = self.environment.clone();
-
-        self.environment = Environment::wrap(environment);
+        self.environment = environment;
         let result = statements.iter().try_for_each(|s| self.execute(s));
 
         self.environment = previous;
@@ -221,12 +227,20 @@ impl Interpreter {
                 }
             }
             // TODO: Clone?
-            Expr::Variable(e) => self.environment.borrow().get(e.name.clone()),
+            Expr::Variable(e) => self.look_up_variable(e.name.clone(), e.clone()),
             Expr::Assign(e) => {
                 let value = self.evaluate(&e.value)?;
-                self.environment
-                    .borrow_mut()
-                    .assign(e.name.clone(), value.clone())?;
+                if let Some(distance) = self.locals.get(&Expr::Assign(e.clone())) {
+                    self.environment.borrow_mut().assign_at(
+                        distance,
+                        &e.name.lexeme,
+                        value.clone(),
+                    )?;
+                } else {
+                    self.environment
+                        .borrow_mut()
+                        .assign(e.name.clone(), value.clone())?;
+                }
                 Ok(value)
             }
             Expr::Logical(e) => {
@@ -240,6 +254,14 @@ impl Interpreter {
                 }
                 self.evaluate(&e.right)
             }
+        }
+    }
+
+    fn look_up_variable(&self, name: Token, expr: Box<VariableExpr>) -> Result<Literal, LoxResult> {
+        if let Some(distance) = self.locals.get(&Expr::Variable(expr)) {
+            self.environment.borrow().get_at(distance, &name.lexeme)
+        } else {
+            self.environment.borrow().get(name)
         }
     }
 

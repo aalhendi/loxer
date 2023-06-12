@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     environment::Environment,
@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct Interpreter {
-    pub environment: Environment,
+    pub environment: Rc<RefCell<Environment>>,
 }
 
 impl Interpreter {
@@ -20,7 +20,9 @@ impl Interpreter {
         let clock = Literal::Function(Rc::new(Clock));
         environment.define("clock", clock);
 
-        Self { environment }
+        Self {
+            environment: Rc::new(RefCell::new(environment)),
+        }
     }
 
     pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxResult> {
@@ -33,15 +35,16 @@ impl Interpreter {
     fn execute(&mut self, s: &Stmt) -> Result<(), LoxResult> {
         match s {
             Stmt::Block(s) => {
-                self.execute_block(&s.statements)?;
+                self.execute_block(&s.statements, Environment::wrap(self.environment.clone()))?;
             }
             Stmt::Class(_) => todo!(),
             Stmt::Expression(s) => {
                 self.evaluate(&s.expression)?;
             }
             Stmt::Function(s) => {
-                let function = LoxFunction::new(*s.clone());
+                let function = LoxFunction::new(*s.clone(), self.environment.clone());
                 self.environment
+                    .borrow_mut()
                     .define(&s.name.lexeme, Literal::Function(Rc::new(function)));
             }
             Stmt::If(s) => {
@@ -69,7 +72,7 @@ impl Interpreter {
                 } else {
                     Literal::Nil
                 };
-                self.environment.define(&s.name.lexeme, value);
+                self.environment.borrow_mut().define(&s.name.lexeme, value);
             }
             Stmt::While(s) => {
                 let mut condition = self.evaluate(&s.condition)?;
@@ -82,17 +85,17 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), LoxResult> {
-        // Takes self.environment and sets #Default in its place temporarily
-        let tmp = std::mem::take(&mut self.environment);
-        // Create a new nested environment (scope) for the block. Set enclosing to be the parent scope.
-        self.environment = Environment::new(Some(Box::new(tmp)));
-        let result = statements.iter().try_for_each(|s| self.execute(s));
-        // Set environment back to the parent scope the same way.
-        // NOTE: compiler should realise the tmp store is being elided and remove it in release mode. This just gets around the borrow checker and avoids cloning
-        let tmp = std::mem::take(&mut self.environment);
-        self.environment = *tmp.enclosing.unwrap();
+    pub fn execute_block(
+        &mut self,
+        statements: &[Stmt],
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<(), LoxResult> {
+        let previous = self.environment.clone();
 
+        self.environment = Environment::wrap(environment);
+        let result = statements.iter().try_for_each(|s| self.execute(s));
+
+        self.environment = previous;
         result
     }
 
@@ -218,10 +221,12 @@ impl Interpreter {
                 }
             }
             // TODO: Clone?
-            Expr::Variable(e) => self.environment.get(e.name.clone()),
+            Expr::Variable(e) => self.environment.borrow().get(e.name.clone()),
             Expr::Assign(e) => {
                 let value = self.evaluate(&e.value)?;
-                self.environment.assign(e.name.clone(), value.clone())?;
+                self.environment
+                    .borrow_mut()
+                    .assign(e.name.clone(), value.clone())?;
                 Ok(value)
             }
             Expr::Logical(e) => {

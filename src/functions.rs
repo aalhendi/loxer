@@ -1,5 +1,5 @@
 // TODO: Rename file to LoxFunction
-use std::time::SystemTime;
+use std::{cell::RefCell, rc::Rc, time::SystemTime};
 
 use crate::{
     environment::Environment,
@@ -35,11 +35,15 @@ impl LoxCallable for Clock {
 
 pub struct LoxFunction {
     pub declaration: FunctionStmt,
+    closure: Rc<RefCell<Environment>>,
 }
 
 impl LoxFunction {
-    pub fn new(declaration: FunctionStmt) -> Self {
-        Self { declaration }
+    pub fn new(declaration: FunctionStmt, closure: Rc<RefCell<Environment>>) -> Self {
+        Self {
+            declaration,
+            closure,
+        }
     }
 }
 
@@ -51,22 +55,16 @@ impl LoxCallable for LoxFunction {
         interpreter: &mut Interpreter,
         arguments: Vec<Literal>,
     ) -> Result<Literal, LoxResult> {
-        // Takes self.environment and sets #Default in its place temporarily
-        let tmp = std::mem::take(&mut interpreter.environment);
         // Create a new nested environment (scope) for the block. Set enclosing to be the parent scope.
-        interpreter.environment = Environment::new(Some(Box::new(tmp)));
+        let environment = Environment::wrap(self.closure.clone());
         for (i, p) in self.declaration.params.iter().enumerate() {
-            interpreter
-                .environment
+            environment
+                .borrow_mut()
                 .define(&p.lexeme, arguments.get(i).unwrap().clone())
         }
 
-        match interpreter.execute_block(&self.declaration.body) {
+        match interpreter.execute_block(&self.declaration.body, environment) {
             Err(LoxResult::Return(v)) => {
-                // Set environment back to the parent scope the same way.
-                // NOTE: compiler should realise the tmp store is being elided and remove it in release mode. This just gets around the borrow checker and avoids cloning
-                let tmp = std::mem::take(&mut interpreter.environment);
-                interpreter.environment = *tmp.enclosing.unwrap();
                 // Return stuff
                 Ok(v)
             }

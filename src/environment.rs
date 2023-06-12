@@ -1,18 +1,29 @@
 use crate::{expr::Literal, lox_result::LoxResult, token::Token};
-use std::collections::{hash_map::Entry::Occupied, HashMap};
+use std::{
+    cell::RefCell,
+    collections::{hash_map::Entry::Occupied, HashMap},
+    rc::Rc,
+};
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Environment {
     values: HashMap<String, Literal>,
-    pub enclosing: Option<Box<Environment>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
-    pub fn new(enclosing: Option<Box<Environment>>) -> Self {
+    pub fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Self {
         Self {
             values: HashMap::new(),
             enclosing,
         }
+    }
+
+    pub fn wrap(enclosing: Rc<RefCell<Environment>>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
+            enclosing: Some(enclosing),
+            values: HashMap::new(),
+        }))
     }
 
     // NOTE: Shadowing is legal Lox
@@ -31,7 +42,7 @@ impl Environment {
             Some(v) => Ok(v.clone()),
             None => {
                 if let Some(e) = &self.enclosing {
-                    return e.get(name);
+                    return e.borrow().get(name);
                 }
 
                 Err(LoxResult::new_error(
@@ -48,7 +59,7 @@ impl Environment {
             Ok(())
         } else {
             if let Some(e) = &mut self.enclosing {
-                return e.assign(name, value);
+                return e.borrow_mut().assign(name, value);
             }
             Err(LoxResult::new_error(
                 name.line,

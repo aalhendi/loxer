@@ -275,11 +275,12 @@ impl<'a> Parser<'a> {
 
         // If an increment stmt exists, append it so it executes after the body
         if let Some(increment) = increment {
-            let stmts = vec![
-                body,
-                Stmt::Expression(Box::new(ExpressionStmt::new(increment))),
-            ];
-            body = Stmt::Block(Box::new(BlockStmt::new(stmts)));
+            let increment = Stmt::Expression(Box::new(ExpressionStmt::new(increment)));
+            if let Stmt::Block(block) = &mut body {
+                block.statements.push(increment);
+            } else {
+                body = Stmt::Block(Box::new(BlockStmt::new(vec![body, increment])))
+            };
         }
 
         body = Stmt::While(Box::new(WhileStmt::new(condition, body)));

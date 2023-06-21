@@ -1,6 +1,11 @@
-use std::fmt::Display;
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
-use crate::{expr::{LoxCallable, Literal}, lox_result::LoxResult, interpreter::Interpreter};
+use crate::{
+    expr::{Literal, LoxCallable},
+    interpreter::Interpreter,
+    lox_result::LoxResult,
+    token::Token,
+};
 
 #[derive(Debug, Clone)]
 pub struct LoxClass {
@@ -14,7 +19,6 @@ impl LoxClass {
         }
     }
 }
-
 
 impl Display for LoxClass {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,8 +34,7 @@ impl LoxCallable for LoxClass {
     ) -> Result<Literal, LoxResult> {
         let instance = LoxInstance::new(self.clone());
 
-        Ok(Literal::Instance(instance))
-        
+        Ok(Literal::Instance(Rc::new(RefCell::new(instance))))
     }
 
     fn get_arity(&self) -> usize {
@@ -46,11 +49,29 @@ impl LoxCallable for LoxClass {
 #[derive(Debug, Clone)]
 pub struct LoxInstance {
     class: LoxClass,
+    fields: HashMap<String, Literal>,
 }
 
 impl LoxInstance {
     pub fn new(class: LoxClass) -> Self {
-        Self { class }
+        Self {
+            class,
+            fields: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, name: &Token) -> Result<Literal, LoxResult> {
+        match self.fields.get(&name.lexeme) {
+            Some(v) => Ok(v.clone()),
+            None => Err(LoxResult::new_error(
+                name.line,
+                &format!("Undefined property {}.", name.lexeme),
+            )),
+        }
+    }
+
+    pub fn set(&mut self, name: Token, value: Literal) {
+        self.fields.insert(name.lexeme, value);
     }
 }
 

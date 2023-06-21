@@ -209,7 +209,7 @@ impl Interpreter {
                     }
                     Literal::Class(class) => {
                         // TODO: Is this the way to go or is there a cleaner implementation?
-                        let class = Box::new(class) as Box<dyn LoxCallable>;
+                        let class = &class as &dyn LoxCallable;
                         if arguments.len() != class.get_arity() {
                             return Err(LoxResult::new_error(
                                 e.paren.line,
@@ -279,6 +279,42 @@ impl Interpreter {
                     return Ok(left);
                 }
                 self.evaluate(&e.right)
+            }
+            Expr::Get(e) => {
+                let object = self.evaluate(&e.object)?;
+                match object {
+                    Literal::Identifier(_)
+                    | Literal::Boolean(_)
+                    | Literal::Nil
+                    | Literal::String(_)
+                    | Literal::Number(_)
+                    | Literal::Function(_)
+                    | Literal::Class(_) => Err(LoxResult::new_error(
+                        e.name.line,
+                        "Only instances have properties",
+                    )),
+                    Literal::Instance(instance) => instance.borrow().get(&e.name),
+                }
+            }
+            Expr::Set(e) => {
+                let object = self.evaluate(&e.object)?;
+                match object {
+                    Literal::Identifier(_)
+                    | Literal::Boolean(_)
+                    | Literal::Nil
+                    | Literal::String(_)
+                    | Literal::Number(_)
+                    | Literal::Function(_)
+                    | Literal::Class(_) => Err(LoxResult::new_error(
+                        e.name.line,
+                        "Only instances have fields",
+                    )),
+                    Literal::Instance(instance) => {
+                        let value = self.evaluate(&e.value)?;
+                        instance.borrow_mut().set(e.name.clone(), value.clone());
+                        Ok(value)
+                    }
+                }
             }
         }
     }

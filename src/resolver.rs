@@ -103,10 +103,16 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(&e.right)?;
             }
             Expr::Grouping(e) => self.resolve_expr(&e.expression)?,
+            // Property dispatch is clearly dynamic since it is not processed during static resolution pass
+            Expr::Get(e) => self.resolve_expr(&e.object)?,
             Expr::Literal(_e) => {}
             Expr::Logical(e) => {
                 self.resolve_expr(&e.left)?;
                 self.resolve_expr(&e.right)?;
+            }
+            Expr::Set(e) => {
+                self.resolve_expr(&e.value)?;
+                self.resolve_expr(&e.object)?;
             }
             Expr::Unary(e) => self.resolve_expr(&e.right)?,
             Expr::Variable(e) => {

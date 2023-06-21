@@ -1,5 +1,6 @@
-use crate::lox_class::{LoxInstance, LoxClass};
+use crate::lox_class::{LoxClass, LoxInstance};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
+use std::cell::RefCell;
 use std::hash::Hash;
 use std::{
     fmt::{self, Display, Formatter},
@@ -16,7 +17,7 @@ pub enum Literal {
     Number(f64),
     Function(Rc<dyn LoxCallable>),
     Class(LoxClass),
-    Instance(LoxInstance)
+    Instance(RefCell<LoxInstance>),
 }
 
 // TODO: Verify
@@ -33,8 +34,8 @@ impl core::fmt::Debug for Literal {
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
             Self::Function(arg0) => f.debug_tuple("Function").field(&arg0.to_string()).finish(),
-            Self::Class(arg0)=>f.debug_tuple("Class").field(arg0).finish(),
-            Self::Instance(arg0)=>f.debug_tuple("Instance").field(arg0).finish()
+            Self::Class(arg0) => f.debug_tuple("Class").field(arg0).finish(),
+            Self::Instance(arg0) => f.debug_tuple("Instance").field(arg0).finish(),
         }
     }
 }
@@ -49,7 +50,7 @@ impl Display for Literal {
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),
             Literal::Class(c) => LoxCallable::to_string(c),
-            Literal::Instance(i) => i.to_string()
+            Literal::Instance(i) => i.borrow().to_string(),
         };
         write!(f, "{v}")
     }
@@ -85,11 +86,11 @@ pub enum Expr {
     Binary(Box<BinaryExpr>),
     Call(Box<CallExpr>),
     Conditional(Box<ConditionalExpr>), // Ternary
-    // Get,
+    Get(Box<GetExpr>),
     Grouping(Box<GroupingExpr>),
     Literal(Literal),
     Logical(Box<LogicalExpr>),
-    // Set,
+    Set(Box<SetExpr>),
     // Super,
     // This,
     Unary(Box<UnaryExpr>),
@@ -118,6 +119,8 @@ impl Display for Expr {
                 Expr::Logical(e) => format!("{e}"),
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
+                Expr::Get(_e) => todo!("Getexpr"),
+                Expr::Set(_e) => todo!("Setexpr"),
             }
         )
     }
@@ -346,6 +349,47 @@ impl Display for AssignExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GetExpr {
+    pub object: Expr,
+    pub name: Token,
+}
+
+impl GetExpr {
+    pub fn new(name: Token, object: Expr) -> Self {
+        Self { name, object }
+    }
+}
+
+impl Display for GetExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", parenthesize(&self.name.lexeme, &[&self.object]))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetExpr {
+    pub object: Expr,
+    pub name: Token,
+    pub value: Expr,
+}
+
+impl SetExpr {
+    pub fn new(object: Expr, name: Token, value: Expr) -> Self {
+        Self {
+            name,
+            object,
+            value,
+        }
+    }
+}
+
+impl Display for SetExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", parenthesize(&self.name.lexeme, &[&self.object]))
+    }
+}
+
 fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
     let mut builder = String::new();
     builder.push('(');
@@ -358,8 +402,10 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Call(_e) => todo!("Impl display"),
             Expr::Conditional(e) => parenthesize("?:", &[&e.condition, &e.left, &e.right]),
             Expr::Grouping(e) => parenthesize("group", &[&e.expression]),
+            Expr::Get(e) => parenthesize("get", &[&e.object]), // TODO: Check?
             Expr::Literal(l) => format!("{l}"),
             Expr::Logical(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
+            Expr::Set(e) => parenthesize("Set", &[&e.object, &e.value]), // TODO: Check?
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),
         };
@@ -384,10 +430,12 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             Expr::Call(_e) => todo!("?"),
             Expr::Conditional(_e) => todo!("RPN for conditional expressions"), // TODO: RPN isn't expressive enough for ternary?
             Expr::Grouping(e) => format!("{} group", e.expression),
+            Expr::Get(_e) => todo!("RPN for get exprs"),
             Expr::Literal(l) => {
                 format!("{l}")
             }
             Expr::Logical(e) => format!("{} {} {}", e.left, e.right, e.operator.lexeme),
+            Expr::Set(_e) => todo!("RPN for set exprs"),
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
             Expr::Variable(_e) => todo!(),
         };

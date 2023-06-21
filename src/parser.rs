@@ -1,12 +1,12 @@
 use crate::{
     expr::{
-        AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, GroupingExpr, Literal,
-        LogicalExpr, UnaryExpr, VariableExpr,
+        AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, GetExpr, GroupingExpr, Literal,
+        LogicalExpr, SetExpr, UnaryExpr, VariableExpr,
     },
     lox_result::LoxResult,
     stmt::{
-        BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
-        WhileStmt, ClassStmt,
+        BlockStmt, ClassStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt,
+        VarStmt, WhileStmt,
     },
     token::{Token, TokenType},
 };
@@ -46,7 +46,7 @@ funDecl        → "fun" function ;
 expression     → conditional;
 parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 conditional    → assignment ("?" expression ":" conditional)? ;
-assignment     → IDENTIFIER "=" assignment
+assignment     → ( call "." )? IDENTIFIER "=" assignment
                | logic_or ;
 logic_or       → logic_and ( "or" logic_and )* ;
 logic_and      → equality ( "and" equality )* ;
@@ -55,7 +55,7 @@ comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" ) unary )* ;
 unary          → ( "!" | "-" ) unary | call ;
-call           → primary ( "(" arguments? ")" )* ;
+call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
 arguments      → expression ( "," expression )* ;
 primary        → NUMBER | STRING | "true" | "false" | "nil"
                | "(" expression ")"
@@ -114,7 +114,7 @@ impl<'a> Parser<'a> {
                 } else {
                     return Err(LoxResult::new_error(t.line, "Expect class name."));
                 }
-            },
+            }
             None => unreachable!("Ran out of tokens"),
         };
 
@@ -136,16 +136,12 @@ impl<'a> Parser<'a> {
             }
             methods.push(self.function("method")?);
         }
-        
 
         if let Some(t) = self.tokens.peek() {
             if let TokenType::RightBrace = &t.token_type {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    "Expect `}` after class body.",
-                ));
+                return Err(LoxResult::new_error(t.line, "Expect `}` after class body."));
             }
         }
 
@@ -594,6 +590,9 @@ impl<'a> Parser<'a> {
                     Expr::Variable(s) => {
                         return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))));
                     }
+                    Expr::Get(e) => {
+                        return Ok(Expr::Set(Box::new(SetExpr::new(e.object, e.name, value))));
+                    }
                     _ => eprintln!(
                         "{}",
                         LoxResult::new_error(equals.line, "Invalid assignment target.")
@@ -711,13 +710,25 @@ impl<'a> Parser<'a> {
         let mut expr = self.primary()?;
 
         // Deliberate loop. Setting up for parsing object properties later on.
-        #[allow(clippy::while_let_loop)]
         loop {
             if let Some(_t) = self
                 .tokens
                 .next_if(|t| t.token_type == TokenType::LeftParen)
             {
                 expr = self.finish_call(expr)?;
+            } else if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Dot) {
+                let name = match self.tokens.peek() {
+                    Some(t) => {
+                        if let TokenType::Identifier(_) = &t.token_type {
+                            self.tokens.next().unwrap()
+                        } else {
+                            return Err(LoxResult::new_error(t.line, "Expect property after `.`."));
+                        }
+                    }
+                    None => unreachable!("Ran out of tokens"),
+                };
+
+                expr = Expr::Get(Box::new(GetExpr::new(name.clone(), expr)));
             } else {
                 break;
             }

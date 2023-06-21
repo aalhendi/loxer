@@ -27,9 +27,15 @@ impl BlockStmt {
 
 #[derive(Debug, Clone)]
 pub struct ClassStmt {
-    name: Token,
+    pub name: Token,
     // superclass: superclass, // TODO: ?
-    methods: Vec<Stmt>,
+    pub methods: Vec<Stmt>,
+}
+
+impl ClassStmt {
+    pub fn new(name: Token, methods: Vec<Stmt>) -> Self {
+        Self { name, methods }
+    }
 }
 
 #[derive(Debug, Clone)]

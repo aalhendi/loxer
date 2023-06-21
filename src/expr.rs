@@ -1,3 +1,4 @@
+use crate::lox_class::{LoxInstance, LoxClass};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
 use std::hash::Hash;
 use std::{
@@ -14,6 +15,8 @@ pub enum Literal {
     String(String),
     Number(f64),
     Function(Rc<dyn LoxCallable>),
+    Class(LoxClass),
+    Instance(LoxInstance)
 }
 
 // TODO: Verify
@@ -30,6 +33,8 @@ impl core::fmt::Debug for Literal {
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
             Self::Function(arg0) => f.debug_tuple("Function").field(&arg0.to_string()).finish(),
+            Self::Class(arg0)=>f.debug_tuple("Class").field(arg0).finish(),
+            Self::Instance(arg0)=>f.debug_tuple("Instance").field(arg0).finish()
         }
     }
 }
@@ -43,6 +48,8 @@ impl Display for Literal {
             Literal::String(s) => format!("\"{s}\""),
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),
+            Literal::Class(c) => LoxCallable::to_string(c),
+            Literal::Instance(i) => i.to_string()
         };
         write!(f, "{v}")
     }

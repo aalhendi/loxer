@@ -38,7 +38,10 @@ impl<'a> Resolver<'a> {
                     self.resolve_stmts(&s.statements)?;
                     self.end_scope();
                 }
-                Stmt::Class(_) => todo!(),
+                Stmt::Class(s) => {
+                    self.declare(&s.name)?;
+                    self.define(&s.name);
+                },
                 Stmt::Expression(s) => self.resolve_expr(&s.expression)?,
                 Stmt::Function(s) => {
                     self.declare(&s.name)?;
@@ -57,14 +60,14 @@ impl<'a> Resolver<'a> {
                     if matches!(self.current_function, FunctionType::None){
                         return Err(LoxResult::new_error(s.keyword.line, "Cannot return from top-level code"));
                     }
-                    if let Some(v) = s.value.clone() {
-                        self.resolve_expr(&v)?;
+                    if let Some(v) = &s.value {
+                        self.resolve_expr(v)?;
                     }
                 }
                 Stmt::Var(s) => {
                     self.declare(&s.name)?;
-                    if let Some(i) = &s.initializer {
-                        self.resolve_expr(i)?;
+                    if let Some(i) = s.initializer.clone() {
+                        self.resolve_expr(&i)?;
                     }
                     self.define(&s.name);
                 }

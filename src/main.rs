@@ -14,6 +14,7 @@ use interpreter::Interpreter;
 mod environment;
 mod expr;
 mod functions;
+mod lox_class;
 mod parser;
 mod resolver;
 mod stmt;

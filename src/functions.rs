@@ -33,6 +33,7 @@ impl LoxCallable for Clock {
     }
 }
 
+#[derive(Debug,Clone)]
 pub struct LoxFunction {
     pub declaration: FunctionStmt,
     closure: Rc<RefCell<Environment>>,

@@ -6,7 +6,7 @@ use crate::{
     lox_result::LoxResult,
     stmt::{
         BlockStmt, ExpressionStmt, FunctionStmt, IfStmt, PrintStmt, ReturnStmt, Stmt, VarStmt,
-        WhileStmt,
+        WhileStmt, ClassStmt,
     },
     token::{Token, TokenType},
 };
@@ -18,7 +18,10 @@ pub struct Parser<'a> {
 
 /*
 program        → statement* EOF ;
-declaration    → funDecl
+classDecl      → "class" IDENTIFIER "{" function* "}" ;
+function       → IDENTIFIER "(" parameters? ")" block ;
+declaration    → classDecl
+               | funDecl
                | varDecl
                | statement ;
 statement      → exprStmt
@@ -90,6 +93,8 @@ impl<'a> Parser<'a> {
         } else if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Fun) {
             // TODO: Enum?
             return self.function("function");
+        } else if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Class) {
+            return self.class_declaration();
         }
         match self.statement() {
             Ok(s) => Ok(s),
@@ -99,6 +104,52 @@ impl<'a> Parser<'a> {
                 Err(e)
             }
         }
+    }
+
+    fn class_declaration(&mut self) -> Result<Stmt, LoxResult> {
+        let name = match self.tokens.peek() {
+            Some(t) => {
+                if let TokenType::Identifier(_) = &t.token_type {
+                    self.tokens.next().unwrap()
+                } else {
+                    return Err(LoxResult::new_error(t.line, "Expect class name."));
+                }
+            },
+            None => unreachable!("Ran out of tokens"),
+        };
+
+        if let Some(t) = self.tokens.peek() {
+            if let TokenType::LeftBrace = &t.token_type {
+                self.tokens.next();
+            } else {
+                return Err(LoxResult::new_error(
+                    t.line,
+                    "Expect `{` before class body.",
+                ));
+            }
+        }
+
+        let mut methods = Vec::new();
+        while let Some(t) = self.tokens.peek() {
+            if t.token_type == TokenType::RightBrace || t.token_type == TokenType::Eof {
+                break;
+            }
+            methods.push(self.function("method")?);
+        }
+        
+
+        if let Some(t) = self.tokens.peek() {
+            if let TokenType::RightBrace = &t.token_type {
+                self.tokens.next();
+            } else {
+                return Err(LoxResult::new_error(
+                    t.line,
+                    "Expect `}` after class body.",
+                ));
+            }
+        }
+
+        Ok(Stmt::Class(Box::new(ClassStmt::new(name.clone(), methods))))
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, LoxResult> {
@@ -402,7 +453,7 @@ impl<'a> Parser<'a> {
                     ));
                 }
             }
-            _ => unreachable!("?"),
+            _ => unreachable!("Ran out of tokens"),
         };
 
         if let Some(t) = self.tokens.peek() {

@@ -2,8 +2,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     environment::Environment,
-    expr::{Expr, Literal, VariableExpr},
+    expr::{Expr, Literal, LoxCallable, VariableExpr},
     functions::{Clock, LoxFunction},
+    lox_class::LoxClass,
     lox_result::LoxResult,
     stmt::Stmt,
     token::{Token, TokenType},
@@ -40,7 +41,15 @@ impl Interpreter {
             Stmt::Block(s) => {
                 self.execute_block(&s.statements, Environment::wrap(self.environment.clone()))?;
             }
-            Stmt::Class(_) => todo!(),
+            Stmt::Class(s) => {
+                self.environment
+                    .borrow_mut()
+                    .define(&s.name.lexeme, Literal::Nil);
+                let class = LoxClass::new(&s.name.lexeme);
+                self.environment
+                    .borrow_mut()
+                    .assign(s.name.clone(), Literal::Class(class))?;
+            }
             Stmt::Expression(s) => {
                 self.evaluate(&s.expression)?;
             }
@@ -179,6 +188,7 @@ impl Interpreter {
                     | Literal::Boolean(_)
                     | Literal::Nil
                     | Literal::String(_)
+                    | Literal::Instance(_)
                     | Literal::Number(_) => Err(LoxResult::new_error(
                         e.paren.line,
                         "Can only call classes and functions",
@@ -196,6 +206,22 @@ impl Interpreter {
                         }
 
                         function.call(self, arguments)
+                    }
+                    Literal::Class(class) => {
+                        // TODO: Is this the way to go or is there a cleaner implementation?
+                        let class = Box::new(class) as Box<dyn LoxCallable>;
+                        if arguments.len() != class.get_arity() {
+                            return Err(LoxResult::new_error(
+                                e.paren.line,
+                                &format!(
+                                    "Expected {} arguments but got {}.",
+                                    class.get_arity(),
+                                    arguments.len()
+                                ),
+                            ));
+                        }
+
+                        class.call(self, arguments)
                     }
                 }
             }
@@ -291,6 +317,8 @@ impl Interpreter {
             Literal::Identifier(_)
             | Literal::String(_)
             | Literal::Number(_)
+            | Literal::Class(_)
+            | Literal::Instance(_)
             | Literal::Function(_) => true,
         }
     }

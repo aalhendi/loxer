@@ -90,7 +90,7 @@ impl PrintStmt {
 
 #[derive(Debug, Clone)]
 pub struct ReturnStmt {
-    keyword: Token,
+    pub keyword: Token,
     pub value: Option<Expr>,
 }
 

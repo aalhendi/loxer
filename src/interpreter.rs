@@ -88,8 +88,8 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn resolve(&mut self, expr: Expr, depth: usize) {
-        self.locals.insert(expr, depth);
+    pub fn resolve(&mut self, expr: &Expr, depth: usize) {
+        self.locals.insert(expr.clone(), depth);
     }
 
     pub fn execute_block(

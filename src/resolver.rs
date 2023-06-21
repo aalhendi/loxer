@@ -8,10 +8,17 @@ use crate::{
     token::Token,
 };
 
+#[derive(Clone, Copy)]
+enum FunctionType {
+    None,
+    Function
+}
+
 pub struct Resolver<'a> {
     pub interpreter: &'a mut Interpreter,
     scopes: Vec<HashMap<String, bool>>,
-    is_in_function: bool, // TODO: had_error? rather than error out during resolving
+    current_function: FunctionType, 
+    // TODO: had_error? rather than error out during resolving
 }
 
 impl<'a> Resolver<'a> {
@@ -19,7 +26,7 @@ impl<'a> Resolver<'a> {
         Self {
             interpreter,
             scopes: vec![],
-            is_in_function: false,
+            current_function: FunctionType::None,
         }
     }
 
@@ -36,7 +43,7 @@ impl<'a> Resolver<'a> {
                 Stmt::Function(s) => {
                     self.declare(&s.name)?;
                     self.define(&s.name);
-                    self.resolve_function(*s.clone(), true)?;
+                    self.resolve_function(s, FunctionType::Function)?;
                 }
                 Stmt::If(s) => {
                     self.resolve_expr(&s.condition)?;
@@ -47,9 +54,8 @@ impl<'a> Resolver<'a> {
                 }
                 Stmt::Print(s) => self.resolve_expr(&s.expression)?,
                 Stmt::Return(s) => {
-                    if !self.is_in_function {
-                        // TODO: Line number
-                        return Err(LoxResult::new_error(0, "Cannot return from top-level code"));
+                    if matches!(self.current_function, FunctionType::None){
+                        return Err(LoxResult::new_error(s.keyword.line, "Cannot return from top-level code"));
                     }
                     if let Some(v) = s.value.clone() {
                         self.resolve_expr(&v)?;
@@ -57,8 +63,8 @@ impl<'a> Resolver<'a> {
                 }
                 Stmt::Var(s) => {
                     self.declare(&s.name)?;
-                    if let Some(i) = s.initializer.clone() {
-                        self.resolve_expr(&i)?;
+                    if let Some(i) = &s.initializer {
+                        self.resolve_expr(i)?;
                     }
                     self.define(&s.name);
                 }
@@ -118,9 +124,8 @@ impl<'a> Resolver<'a> {
         Ok(())
     }
 
-    fn resolve_function(&mut self, f: FunctionStmt, is_in_function: bool) -> Result<(), LoxResult> {
-        let enclosing_is_in_function = self.is_in_function;
-        self.is_in_function = is_in_function;
+    fn resolve_function(&mut self, f: &FunctionStmt, current_function: FunctionType) -> Result<(), LoxResult> {
+        let enclosing_is_in_function = std::mem::replace(&mut self.current_function, current_function);
 
         self.begin_scope();
         for p in f.params.iter() {
@@ -129,7 +134,7 @@ impl<'a> Resolver<'a> {
         }
         self.resolve_stmts(&f.body)?;
         self.end_scope();
-        self.is_in_function = enclosing_is_in_function;
+        self.current_function = enclosing_is_in_function;
         Ok(())
     }
 
@@ -164,7 +169,7 @@ impl<'a> Resolver<'a> {
     fn resolve_local(&mut self, expr: Expr, name: &Token) {
         for (idx, scope) in self.scopes.iter().rev().enumerate() {
             if scope.contains_key(&name.lexeme) {
-                self.interpreter.resolve(expr.clone(), idx);
+                self.interpreter.resolve(&expr, idx);
             }
         }
     }

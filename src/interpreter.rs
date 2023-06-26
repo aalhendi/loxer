@@ -48,7 +48,11 @@ impl Interpreter {
                 for method in &s.methods {
                     match method {
                         Stmt::Function(f) => {
-                            let function = LoxFunction::new(*f.clone(), self.environment.clone());
+                            let function = LoxFunction::new(
+                                *f.clone(),
+                                self.environment.clone(),
+                                f.name.lexeme.eq("init"),
+                            );
                             methods.insert(f.name.lexeme.clone(), function);
                         }
                         _ => unreachable!("I think"), // TODO: Validate
@@ -63,7 +67,7 @@ impl Interpreter {
                 self.evaluate(&s.expression)?;
             }
             Stmt::Function(s) => {
-                let function = LoxFunction::new(*s.clone(), self.environment.clone());
+                let function = LoxFunction::new(*s.clone(), self.environment.clone(), false);
                 self.environment
                     .borrow_mut()
                     .define(&s.name.lexeme, Literal::Function(function));

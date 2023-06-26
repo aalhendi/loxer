@@ -38,13 +38,19 @@ impl LoxCallable for Clock {
 pub struct LoxFunction {
     pub declaration: FunctionStmt,
     closure: Rc<RefCell<Environment>>,
+    is_initializer: bool,
 }
 
 impl LoxFunction {
-    pub fn new(declaration: FunctionStmt, closure: Rc<RefCell<Environment>>) -> Self {
+    pub fn new(
+        declaration: FunctionStmt,
+        closure: Rc<RefCell<Environment>>,
+        is_initializer: bool,
+    ) -> Self {
         Self {
             declaration,
             closure,
+            is_initializer,
         }
     }
 
@@ -53,7 +59,7 @@ impl LoxFunction {
         environment
             .borrow_mut()
             .define("this", Literal::Instance(instance.clone()));
-        LoxFunction::new(self.declaration.clone(), environment)
+        LoxFunction::new(self.declaration.clone(), environment, self.is_initializer)
     }
 }
 
@@ -74,8 +80,12 @@ impl LoxCallable for LoxFunction {
         }
 
         match interpreter.execute_block(&self.declaration.body, environment) {
+            Err(LoxResult::Return(_)) if self.is_initializer => {
+                self.closure.borrow().get_at(&0, "this")
+            }
             Err(LoxResult::Return(v)) => Ok(v),
             Err(e) => Err(e),
+            Ok(_) if self.is_initializer => self.closure.borrow().get_at(&0, "this"),
             Ok(_) => Ok(Literal::Nil),
         }
     }

@@ -22,10 +22,8 @@ impl LoxClass {
         }
     }
 
-    pub fn find_method(&self, name: &Token) -> Option<Literal> {
-        self.methods
-            .get(&name.lexeme)
-            .map(|m| Literal::Function(m.clone()))
+    pub fn find_method(&self, name: &str) -> Option<Literal> {
+        self.methods.get(name).map(|m| Literal::Function(m.clone()))
     }
 }
 
@@ -38,16 +36,25 @@ impl Display for LoxClass {
 impl LoxCallable for LoxClass {
     fn call(
         &self,
-        _interpreter: &mut Interpreter,
-        _arguments: Vec<Literal>,
+        interpreter: &mut Interpreter,
+        arguments: Vec<Literal>,
     ) -> Result<Literal, LoxResult> {
-        let instance = LoxInstance::new(self.clone());
+        let instance = Rc::new(RefCell::new(LoxInstance::new(self.clone())));
+        if let Some(Literal::Function(initializer)) = self.find_method("init") {
+            initializer
+                .bind_method(&instance)
+                .call(interpreter, arguments)?;
+        }
 
-        Ok(Literal::Instance(Rc::new(RefCell::new(instance))))
+        Ok(Literal::Instance(instance))
     }
 
     fn get_arity(&self) -> usize {
-        0
+        if let Some(Literal::Function(initializer)) = self.find_method("init") {
+            initializer.get_arity()
+        } else {
+            0
+        }
     }
 
     fn to_string(&self) -> String {
@@ -72,7 +79,7 @@ impl LoxInstance {
     pub fn get(&self, name: &Token, this: &Rc<RefCell<LoxInstance>>) -> Result<Literal, LoxResult> {
         if let Some(v) = self.fields.get(&name.lexeme) {
             Ok(v.clone())
-        } else if let Some(m) = self.class.find_method(name) {
+        } else if let Some(m) = self.class.find_method(&name.lexeme) {
             if let Literal::Function(f) = m {
                 Ok(Literal::Function(f.bind_method(this)))
             } else {

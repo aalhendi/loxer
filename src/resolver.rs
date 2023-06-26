@@ -13,6 +13,7 @@ enum FunctionType {
     None,
     Function,
     Method,
+    Initializer,
 }
 
 enum ClassType {
@@ -58,7 +59,14 @@ impl<'a> Resolver<'a> {
                         .insert("this".to_string(), true);
                     for method in &s.methods {
                         match method {
-                            Stmt::Function(f) => self.resolve_function(f, FunctionType::Method)?,
+                            Stmt::Function(f) => {
+                                let declaration = if f.name.lexeme.eq("init") {
+                                    FunctionType::Initializer
+                                } else {
+                                    FunctionType::Method
+                                };
+                                self.resolve_function(f, declaration)?
+                            }
                             _ => todo!(),
                         }
                     }
@@ -87,6 +95,12 @@ impl<'a> Resolver<'a> {
                         ));
                     }
                     if let Some(v) = &s.value {
+                        if matches!(self.current_function, FunctionType::Initializer) {
+                            return Err(LoxResult::new_error(
+                                s.keyword.line,
+                                "Can't return a value from an initializer.",
+                            ));
+                        }
                         self.resolve_expr(v)?;
                     }
                 }

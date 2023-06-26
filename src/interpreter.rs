@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     environment::Environment,
-    expr::{Expr, Literal, LoxCallable, VariableExpr},
+    expr::{Expr, Literal, LoxCallable},
     functions::{Clock, LoxFunction},
     lox_class::LoxClass,
     lox_result::LoxResult,
@@ -12,7 +12,6 @@ use crate::{
 
 pub struct Interpreter {
     pub environment: Rc<RefCell<Environment>>,
-    // ERROR(?): Expr needs to impl Hash
     locals: HashMap<Expr, usize>,
 }
 
@@ -48,11 +47,11 @@ impl Interpreter {
                 let mut methods = HashMap::new();
                 for method in &s.methods {
                     match method {
-                       Stmt::Function(f)  => {
-                        let function = LoxFunction::new(*f.clone(), self.environment.clone());
-                        methods.insert(f.name.lexeme.clone(), function);
-                       },
-                       _ => todo!(),
+                        Stmt::Function(f) => {
+                            let function = LoxFunction::new(*f.clone(), self.environment.clone());
+                            methods.insert(f.name.lexeme.clone(), function);
+                        }
+                        _ => unreachable!("I think"), // TODO: Validate
                     }
                 }
                 let class = LoxClass::new(&s.name.lexeme, methods);
@@ -276,8 +275,7 @@ impl Interpreter {
                     Ok(self.evaluate(&e.right)?)
                 }
             }
-            // TODO: Clone?
-            Expr::Variable(e) => self.look_up_variable(e.name.clone(), e.clone()),
+            Expr::Variable(e) => self.look_up_variable(e.name.clone(), Expr::Variable(e.clone())),
             Expr::Assign(e) => {
                 let value = self.evaluate(&e.value)?;
                 if let Some(distance) = self.locals.get(&Expr::Assign(e.clone())) {
@@ -318,7 +316,7 @@ impl Interpreter {
                         e.name.line,
                         "Only instances have properties",
                     )),
-                    Literal::Instance(instance) => instance.borrow().get(&e.name),
+                    Literal::Instance(instance) => instance.borrow().get(&e.name, &instance),
                 }
             }
             Expr::Set(e) => {
@@ -342,14 +340,27 @@ impl Interpreter {
                     }
                 }
             }
+            Expr::This(e) => self.look_up_variable(e.keyword.clone(), Expr::This(e.clone())),
         }
     }
 
-    fn look_up_variable(&self, name: Token, expr: Box<VariableExpr>) -> Result<Literal, LoxResult> {
-        if let Some(distance) = self.locals.get(&Expr::Variable(expr)) {
-            self.environment.borrow().get_at(distance, &name.lexeme)
-        } else {
-            self.environment.borrow().get(name)
+    fn look_up_variable(&self, name: Token, expr: Expr) -> Result<Literal, LoxResult> {
+        match expr {
+            Expr::This(e) => {
+                if let Some(distance) = self.locals.get(&Expr::This(e)) {
+                    self.environment.borrow().get_at(distance, &name.lexeme)
+                } else {
+                    self.environment.borrow().get(name)
+                }
+            }
+            Expr::Variable(e) => {
+                if let Some(distance) = self.locals.get(&Expr::Variable(e)) {
+                    self.environment.borrow().get_at(distance, &name.lexeme)
+                } else {
+                    self.environment.borrow().get(name)
+                }
+            }
+            _ => unreachable!("Only This and Variable exprs call this function"),
         }
     }
 
@@ -381,7 +392,7 @@ impl Interpreter {
             | Literal::Number(_)
             | Literal::Class(_)
             | Literal::Instance(_)
-            | Literal::NativeFunction(_) => true,
+            | Literal::NativeFunction(_)
             | Literal::Function(_) => true,
         }
     }

@@ -1,7 +1,7 @@
 use crate::{
     expr::{
         AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, GetExpr, GroupingExpr, Literal,
-        LogicalExpr, SetExpr, UnaryExpr, VariableExpr,
+        LogicalExpr, SetExpr, ThisExpr, UnaryExpr, VariableExpr,
     },
     lox_result::LoxResult,
     stmt::{
@@ -776,6 +776,7 @@ impl<'a> Parser<'a> {
                 TokenType::Nil => Ok(Expr::Literal(Literal::Nil)),
                 TokenType::String(s) => Ok(Expr::Literal(Literal::String(s.to_string()))),
                 TokenType::Number(n) => Ok(Expr::Literal(Literal::Number(*n))),
+                TokenType::This => Ok(Expr::This(Box::new(ThisExpr::new(t.clone())))),
                 TokenType::LeftParen => {
                     let expr = self.expression()?;
                     if let Some(t) = self.tokens.peek() {

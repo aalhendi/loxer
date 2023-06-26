@@ -22,16 +22,10 @@ impl LoxClass {
         }
     }
 
-    pub fn find_method(&self, name: &Token) -> Result<Literal, LoxResult> {
-        match self.methods.get(&name.lexeme) {
-            Some(m) => {
-                Ok(Literal::Function(m.clone()))
-            },
-            None => Err(LoxResult::new_error(
-                name.line,
-                &format!("Undefined property {}.", name.lexeme),
-            )),
-        }
+    pub fn find_method(&self, name: &Token) -> Option<Literal> {
+        self.methods
+            .get(&name.lexeme)
+            .map(|m| Literal::Function(m.clone()))
     }
 }
 
@@ -75,10 +69,20 @@ impl LoxInstance {
         }
     }
 
-    pub fn get(&self, name: &Token) -> Result<Literal, LoxResult> {
-        match self.fields.get(&name.lexeme) {
-            Some(v) => Ok(v.clone()),
-            None => self.class.find_method(name),
+    pub fn get(&self, name: &Token, this: &Rc<RefCell<LoxInstance>>) -> Result<Literal, LoxResult> {
+        if let Some(v) = self.fields.get(&name.lexeme) {
+            Ok(v.clone())
+        } else if let Some(m) = self.class.find_method(name) {
+            if let Literal::Function(f) = m {
+                Ok(Literal::Function(f.bind_method(this)))
+            } else {
+                unreachable!("Non-methods are handled beforehand");
+            }
+        } else {
+            Err(LoxResult::new_error(
+                name.line,
+                &format!("Undefined property {}.", name.lexeme),
+            ))
         }
     }
 

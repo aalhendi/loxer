@@ -5,6 +5,7 @@ use crate::{
     environment::Environment,
     expr::{Literal, LoxCallable},
     interpreter::Interpreter,
+    lox_class::LoxInstance,
     lox_result::LoxResult,
     stmt::FunctionStmt,
 };
@@ -46,6 +47,14 @@ impl LoxFunction {
             closure,
         }
     }
+
+    pub fn bind_method(&self, instance: &Rc<RefCell<LoxInstance>>) -> LoxFunction {
+        let environment = Environment::wrap(self.closure.clone());
+        environment
+            .borrow_mut()
+            .define("this", Literal::Instance(instance.clone()));
+        LoxFunction::new(self.declaration.clone(), environment)
+    }
 }
 
 impl LoxCallable for LoxFunction {
@@ -65,10 +74,7 @@ impl LoxCallable for LoxFunction {
         }
 
         match interpreter.execute_block(&self.declaration.body, environment) {
-            Err(LoxResult::Return(v)) => {
-                // Return stuff
-                Ok(v)
-            }
+            Err(LoxResult::Return(v)) => Ok(v),
             Err(e) => Err(e),
             Ok(_) => Ok(Literal::Nil),
         }

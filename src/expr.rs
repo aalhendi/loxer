@@ -2,11 +2,9 @@ use crate::functions::LoxFunction;
 use crate::lox_class::{LoxClass, LoxInstance};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
 use std::cell::RefCell;
+use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 use std::rc::Rc;
-use std::{
-    fmt::{self, Display, Formatter},
-};
 
 #[derive(Clone)]
 pub enum Literal {
@@ -35,7 +33,10 @@ impl core::fmt::Debug for Literal {
             Self::Nil => write!(f, "Nil"),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
-            Self::NativeFunction(arg0) => f.debug_tuple("NativeFunction").field(&arg0.to_string()).finish(),
+            Self::NativeFunction(arg0) => f
+                .debug_tuple("NativeFunction")
+                .field(&arg0.to_string())
+                .finish(),
             Self::Function(arg0) => f.debug_tuple("Function").field(&arg0.to_string()).finish(),
             Self::Class(arg0) => f.debug_tuple("Class").field(arg0).finish(),
             Self::Instance(arg0) => f.debug_tuple("Instance").field(arg0).finish(),
@@ -49,7 +50,7 @@ impl Display for Literal {
             Literal::Identifier(i) => i.to_owned(),
             Literal::Boolean(b) => b.to_string(),
             Literal::Nil => String::from("Nil"),
-            Literal::NativeFunction(f)=> f.to_string(),
+            Literal::NativeFunction(f) => f.to_string(),
             Literal::String(s) => format!("\"{s}\""),
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),
@@ -96,7 +97,7 @@ pub enum Expr {
     Logical(Box<LogicalExpr>),
     Set(Box<SetExpr>),
     // Super,
-    // This,
+    This(Box<ThisExpr>),
     Unary(Box<UnaryExpr>),
     Variable(Box<VariableExpr>),
 }
@@ -121,6 +122,7 @@ impl Display for Expr {
                 Expr::Grouping(e) => format!("{e}"),
                 Expr::Literal(e) => format!("{e}"),
                 Expr::Logical(e) => format!("{e}"),
+                Expr::This(e) => format!("{e}"), // TODO: Verify
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
                 Expr::Get(_e) => todo!("Getexpr"),
@@ -394,6 +396,23 @@ impl Display for SetExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThisExpr {
+    pub keyword: Token,
+}
+
+impl ThisExpr {
+    pub fn new(keyword: Token) -> Self {
+        Self { keyword }
+    }
+}
+
+impl Display for ThisExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", parenthesize(&self.keyword.lexeme, &[]))
+    }
+}
+
 fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
     let mut builder = String::new();
     builder.push('(');
@@ -410,6 +429,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => format!("{l}"),
             Expr::Logical(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Set(e) => parenthesize("Set", &[&e.object, &e.value]), // TODO: Check?
+            Expr::This(e) => format!("{e}"),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),
         };
@@ -440,6 +460,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             }
             Expr::Logical(e) => format!("{} {} {}", e.left, e.right, e.operator.lexeme),
             Expr::Set(_e) => todo!("RPN for set exprs"),
+            Expr::This(e) => format!("{e}"),
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
             Expr::Variable(_e) => todo!(),
         };

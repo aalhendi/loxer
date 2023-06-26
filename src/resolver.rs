@@ -12,13 +12,19 @@ use crate::{
 enum FunctionType {
     None,
     Function,
-    Method
+    Method,
+}
+
+enum ClassType {
+    None,
+    Class,
 }
 
 pub struct Resolver<'a> {
     pub interpreter: &'a mut Interpreter,
     scopes: Vec<HashMap<String, bool>>,
-    current_function: FunctionType, 
+    current_function: FunctionType,
+    current_class: ClassType,
     // TODO: had_error? rather than error out during resolving
 }
 
@@ -28,6 +34,7 @@ impl<'a> Resolver<'a> {
             interpreter,
             scopes: vec![],
             current_function: FunctionType::None,
+            current_class: ClassType::None,
         }
     }
 
@@ -40,15 +47,24 @@ impl<'a> Resolver<'a> {
                     self.end_scope();
                 }
                 Stmt::Class(s) => {
+                    let enclosing_class =
+                        std::mem::replace(&mut self.current_class, ClassType::Class);
                     self.declare(&s.name)?;
                     self.define(&s.name);
+                    self.begin_scope();
+                    self.scopes
+                        .last_mut()
+                        .unwrap()
+                        .insert("this".to_string(), true);
                     for method in &s.methods {
                         match method {
                             Stmt::Function(f) => self.resolve_function(f, FunctionType::Method)?,
-                            _ => todo!()
+                            _ => todo!(),
                         }
                     }
-                },
+                    self.end_scope();
+                    self.current_class = enclosing_class;
+                }
                 Stmt::Expression(s) => self.resolve_expr(&s.expression)?,
                 Stmt::Function(s) => {
                     self.declare(&s.name)?;
@@ -64,8 +80,11 @@ impl<'a> Resolver<'a> {
                 }
                 Stmt::Print(s) => self.resolve_expr(&s.expression)?,
                 Stmt::Return(s) => {
-                    if matches!(self.current_function, FunctionType::None){
-                        return Err(LoxResult::new_error(s.keyword.line, "Cannot return from top-level code"));
+                    if matches!(self.current_function, FunctionType::None) {
+                        return Err(LoxResult::new_error(
+                            s.keyword.line,
+                            "Cannot return from top-level code",
+                        ));
                     }
                     if let Some(v) = &s.value {
                         self.resolve_expr(v)?;
@@ -121,6 +140,15 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(&e.value)?;
                 self.resolve_expr(&e.object)?;
             }
+            Expr::This(e) => {
+                if matches!(self.current_class, ClassType::None) {
+                    return Err(LoxResult::new_error(
+                        e.keyword.line,
+                        "Can't use `this` outside of a class.",
+                    ));
+                }
+                self.resolve_local(Expr::This(e.clone()), &e.keyword);
+            }
             Expr::Unary(e) => self.resolve_expr(&e.right)?,
             Expr::Variable(e) => {
                 if let Some(l) = self.scopes.last() {
@@ -140,8 +168,13 @@ impl<'a> Resolver<'a> {
         Ok(())
     }
 
-    fn resolve_function(&mut self, f: &FunctionStmt, current_function: FunctionType) -> Result<(), LoxResult> {
-        let enclosing_is_in_function = std::mem::replace(&mut self.current_function, current_function);
+    fn resolve_function(
+        &mut self,
+        f: &FunctionStmt,
+        current_function: FunctionType,
+    ) -> Result<(), LoxResult> {
+        let enclosing_is_in_function =
+            std::mem::replace(&mut self.current_function, current_function);
 
         self.begin_scope();
         for p in f.params.iter() {

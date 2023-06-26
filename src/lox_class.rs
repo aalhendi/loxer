@@ -2,6 +2,7 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
     expr::{Literal, LoxCallable},
+    functions::LoxFunction,
     interpreter::Interpreter,
     lox_result::LoxResult,
     token::Token,
@@ -10,12 +11,26 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct LoxClass {
     pub name: String,
+    pub methods: HashMap<String, LoxFunction>,
 }
 
 impl LoxClass {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, methods: HashMap<String, LoxFunction>) -> Self {
         Self {
             name: name.to_string(),
+            methods,
+        }
+    }
+
+    pub fn find_method(&self, name: &Token) -> Result<Literal, LoxResult> {
+        match self.methods.get(&name.lexeme) {
+            Some(m) => {
+                Ok(Literal::Function(m.clone()))
+            },
+            None => Err(LoxResult::new_error(
+                name.line,
+                &format!("Undefined property {}.", name.lexeme),
+            )),
         }
     }
 }
@@ -63,10 +78,7 @@ impl LoxInstance {
     pub fn get(&self, name: &Token) -> Result<Literal, LoxResult> {
         match self.fields.get(&name.lexeme) {
             Some(v) => Ok(v.clone()),
-            None => Err(LoxResult::new_error(
-                name.line,
-                &format!("Undefined property {}.", name.lexeme),
-            )),
+            None => self.class.find_method(name),
         }
     }
 

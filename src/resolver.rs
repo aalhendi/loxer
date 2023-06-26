@@ -11,7 +11,8 @@ use crate::{
 #[derive(Clone, Copy)]
 enum FunctionType {
     None,
-    Function
+    Function,
+    Method
 }
 
 pub struct Resolver<'a> {
@@ -41,6 +42,12 @@ impl<'a> Resolver<'a> {
                 Stmt::Class(s) => {
                     self.declare(&s.name)?;
                     self.define(&s.name);
+                    for method in &s.methods {
+                        match method {
+                            Stmt::Function(f) => self.resolve_function(f, FunctionType::Method)?,
+                            _ => todo!()
+                        }
+                    }
                 },
                 Stmt::Expression(s) => self.resolve_expr(&s.expression)?,
                 Stmt::Function(s) => {

@@ -1,10 +1,11 @@
+use crate::functions::LoxFunction;
 use crate::lox_class::{LoxClass, LoxInstance};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
 use std::cell::RefCell;
 use std::hash::Hash;
+use std::rc::Rc;
 use std::{
     fmt::{self, Display, Formatter},
-    rc::Rc,
 };
 
 #[derive(Clone)]
@@ -15,9 +16,10 @@ pub enum Literal {
     Nil,
     String(String),
     Number(f64),
-    Function(Rc<dyn LoxCallable>),
+    Function(LoxFunction),
+    NativeFunction(Rc<dyn LoxCallable>),
     Class(LoxClass),
-    Instance(RefCell<LoxInstance>),
+    Instance(Rc<RefCell<LoxInstance>>),
 }
 
 // TODO: Verify
@@ -33,6 +35,7 @@ impl core::fmt::Debug for Literal {
             Self::Nil => write!(f, "Nil"),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
+            Self::NativeFunction(arg0) => f.debug_tuple("NativeFunction").field(&arg0.to_string()).finish(),
             Self::Function(arg0) => f.debug_tuple("Function").field(&arg0.to_string()).finish(),
             Self::Class(arg0) => f.debug_tuple("Class").field(arg0).finish(),
             Self::Instance(arg0) => f.debug_tuple("Instance").field(arg0).finish(),
@@ -46,6 +49,7 @@ impl Display for Literal {
             Literal::Identifier(i) => i.to_owned(),
             Literal::Boolean(b) => b.to_string(),
             Literal::Nil => String::from("Nil"),
+            Literal::NativeFunction(f)=> f.to_string(),
             Literal::String(s) => format!("\"{s}\""),
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),

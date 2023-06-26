@@ -20,7 +20,7 @@ impl Interpreter {
     pub fn new() -> Self {
         let mut environment = Environment::new(None);
 
-        let clock = Literal::Function(Rc::new(Clock));
+        let clock = Literal::NativeFunction(Rc::new(Clock));
         environment.define("clock", clock);
 
         Self {
@@ -45,7 +45,17 @@ impl Interpreter {
                 self.environment
                     .borrow_mut()
                     .define(&s.name.lexeme, Literal::Nil);
-                let class = LoxClass::new(&s.name.lexeme);
+                let mut methods = HashMap::new();
+                for method in &s.methods {
+                    match method {
+                       Stmt::Function(f)  => {
+                        let function = LoxFunction::new(*f.clone(), self.environment.clone());
+                        methods.insert(f.name.lexeme.clone(), function);
+                       },
+                       _ => todo!(),
+                    }
+                }
+                let class = LoxClass::new(&s.name.lexeme, methods);
                 self.environment
                     .borrow_mut()
                     .assign(s.name.clone(), Literal::Class(class))?;
@@ -57,7 +67,7 @@ impl Interpreter {
                 let function = LoxFunction::new(*s.clone(), self.environment.clone());
                 self.environment
                     .borrow_mut()
-                    .define(&s.name.lexeme, Literal::Function(Rc::new(function)));
+                    .define(&s.name.lexeme, Literal::Function(function));
             }
             Stmt::If(s) => {
                 let condition_expr = self.evaluate(&s.condition)?;
@@ -207,6 +217,20 @@ impl Interpreter {
 
                         function.call(self, arguments)
                     }
+                    Literal::NativeFunction(function) => {
+                        if arguments.len() != function.get_arity() {
+                            return Err(LoxResult::new_error(
+                                e.paren.line,
+                                &format!(
+                                    "Expected {} arguments but got {}.",
+                                    function.get_arity(),
+                                    arguments.len()
+                                ),
+                            ));
+                        }
+
+                        function.call(self, arguments)
+                    }
                     Literal::Class(class) => {
                         // TODO: Is this the way to go or is there a cleaner implementation?
                         let class = &class as &dyn LoxCallable;
@@ -288,6 +312,7 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
+                    | Literal::NativeFunction(_)
                     | Literal::Function(_)
                     | Literal::Class(_) => Err(LoxResult::new_error(
                         e.name.line,
@@ -304,6 +329,7 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
+                    | Literal::NativeFunction(_)
                     | Literal::Function(_)
                     | Literal::Class(_) => Err(LoxResult::new_error(
                         e.name.line,
@@ -355,6 +381,7 @@ impl Interpreter {
             | Literal::Number(_)
             | Literal::Class(_)
             | Literal::Instance(_)
+            | Literal::NativeFunction(_) => true,
             | Literal::Function(_) => true,
         }
     }

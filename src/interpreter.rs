@@ -70,7 +70,7 @@ impl Interpreter {
                 let function = LoxFunction::new(*s.clone(), self.environment.clone(), false);
                 self.environment
                     .borrow_mut()
-                    .define(&s.name.lexeme, Literal::Function(function));
+                    .define(&s.name.lexeme, Literal::Function(Rc::new(function)));
             }
             Stmt::If(s) => {
                 let condition_expr = self.evaluate(&s.condition)?;

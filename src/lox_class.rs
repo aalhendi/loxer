@@ -23,7 +23,7 @@ impl LoxClass {
     }
 
     pub fn find_method(&self, name: &str) -> Option<Literal> {
-        self.methods.get(name).map(|m| Literal::Function(m.clone()))
+        self.methods.get(name).map(|m| Literal::Function(Rc::new(m.clone())))
     }
 }
 
@@ -81,7 +81,7 @@ impl LoxInstance {
             Ok(v.clone())
         } else if let Some(m) = self.class.find_method(&name.lexeme) {
             if let Literal::Function(f) = m {
-                Ok(Literal::Function(f.bind_method(this)))
+                Ok(Literal::Function(Rc::new(f.bind_method(this))))
             } else {
                 unreachable!("Non-methods are handled beforehand");
             }

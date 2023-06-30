@@ -14,7 +14,7 @@ pub enum Literal {
     Nil,
     String(String),
     Number(f64),
-    Function(LoxFunction),
+    Function(Rc<LoxFunction>),
     NativeFunction(Rc<dyn LoxCallable>),
     Class(LoxClass),
     Instance(Rc<RefCell<LoxInstance>>),

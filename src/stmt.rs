@@ -1,5 +1,8 @@
 #![allow(dead_code)]
-use crate::{expr::Expr, token::Token};
+use crate::{
+    expr::{Expr, VariableExpr},
+    token::Token,
+};
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -28,13 +31,17 @@ impl BlockStmt {
 #[derive(Debug, Clone)]
 pub struct ClassStmt {
     pub name: Token,
-    // superclass: superclass, // TODO: ?
+    pub superclass: Option<VariableExpr>,
     pub methods: Vec<Stmt>,
 }
 
 impl ClassStmt {
-    pub fn new(name: Token, methods: Vec<Stmt>) -> Self {
-        Self { name, methods }
+    pub fn new(name: Token, methods: Vec<Stmt>, superclass: Option<VariableExpr>) -> Self {
+        Self {
+            name,
+            methods,
+            superclass,
+        }
     }
 }
 

@@ -19,6 +19,7 @@ enum FunctionType {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 pub struct Resolver<'a> {
@@ -52,6 +53,22 @@ impl<'a> Resolver<'a> {
                         std::mem::replace(&mut self.current_class, ClassType::Class);
                     self.declare(&s.name)?;
                     self.define(&s.name);
+                    if let Some(superclass) = &s.superclass {
+                        self.current_class = ClassType::Subclass;
+
+                        if superclass.name.lexeme == s.name.lexeme {
+                            return Err(LoxResult::new_error(
+                                superclass.name.line,
+                                "A class can't inherit from itself.",
+                            ));
+                        }
+                        self.resolve_expr(&Expr::Variable(Box::new(superclass.clone())))?;
+                        self.begin_scope();
+                        self.scopes
+                            .last_mut()
+                            .unwrap()
+                            .insert("super".to_string(), true);
+                    }
                     self.begin_scope();
                     self.scopes
                         .last_mut()
@@ -71,6 +88,9 @@ impl<'a> Resolver<'a> {
                         }
                     }
                     self.end_scope();
+                    if s.superclass.is_some() {
+                        self.end_scope();
+                    }
                     self.current_class = enclosing_class;
                 }
                 Stmt::Expression(s) => self.resolve_expr(&s.expression)?,
@@ -154,6 +174,21 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(&e.value)?;
                 self.resolve_expr(&e.object)?;
             }
+            Expr::Super(e) => match self.current_class {
+                ClassType::None => {
+                    return Err(LoxResult::new_error(
+                        e.keyword.line,
+                        "Can't use 'super' outside of a class.",
+                    ));
+                }
+                ClassType::Class => {
+                    return Err(LoxResult::new_error(
+                        e.keyword.line,
+                        "Can't use 'super' in a class with no superclass.",
+                    ));
+                }
+                ClassType::Subclass => self.resolve_local(Expr::Super(e.clone()), &e.keyword),
+            },
             Expr::This(e) => {
                 if matches!(self.current_class, ClassType::None) {
                     return Err(LoxResult::new_error(

@@ -12,18 +12,33 @@ use crate::{
 pub struct LoxClass {
     pub name: String,
     pub methods: HashMap<String, LoxFunction>,
+    pub superclass: Option<Box<LoxClass>>,
 }
 
 impl LoxClass {
-    pub fn new(name: &str, methods: HashMap<String, LoxFunction>) -> Self {
+    pub fn new(
+        name: &str,
+        superclass: Option<Box<LoxClass>>,
+        methods: HashMap<String, LoxFunction>,
+    ) -> Self {
         Self {
             name: name.to_string(),
             methods,
+            superclass,
         }
     }
 
     pub fn find_method(&self, name: &str) -> Option<Literal> {
-        self.methods.get(name).map(|m| Literal::Function(Rc::new(m.clone())))
+        match self.methods.get(name) {
+            Some(m) => Some(Literal::Function(Rc::new(m.clone()))),
+            None => {
+                if let Some(superclass) = &self.superclass {
+                    superclass.find_method(name)
+                } else {
+                    None
+                }
+            }
+        }
     }
 }
 

@@ -41,9 +41,32 @@ impl Interpreter {
                 self.execute_block(&s.statements, Environment::wrap(self.environment.clone()))?;
             }
             Stmt::Class(s) => {
+                let superclass = if let Some(superclass) = &s.superclass {
+                    let sc = self.evaluate(&Expr::Variable(Box::new(superclass.clone())))?;
+                    match sc {
+                        Literal::Class(c) => Some(Box::new(c)),
+                        _ => {
+                            return Err(LoxResult::new_error(
+                                superclass.name.line,
+                                "Superclass must be a class.",
+                            ))
+                        }
+                    }
+                } else {
+                    None
+                };
+
                 self.environment
                     .borrow_mut()
                     .define(&s.name.lexeme, Literal::Nil);
+
+                if let Some(superclass) = &superclass {
+                    self.environment = Environment::wrap(self.environment.clone());
+                    self.environment
+                        .borrow_mut()
+                        .define("super", Literal::Class(*superclass.clone()))
+                }
+
                 let mut methods = HashMap::new();
                 for method in &s.methods {
                     match method {
@@ -58,7 +81,12 @@ impl Interpreter {
                         _ => unreachable!("I think"), // TODO: Validate
                     }
                 }
-                let class = LoxClass::new(&s.name.lexeme, methods);
+                if superclass.is_some() {
+                    // TODO: std::mem::replace?
+                    let enclosing = self.environment.borrow_mut().enclosing.clone().unwrap();
+                    self.environment = enclosing;
+                }
+                let class = LoxClass::new(&s.name.lexeme, superclass, methods);
                 self.environment
                     .borrow_mut()
                     .assign(s.name.clone(), Literal::Class(class))?;
@@ -342,6 +370,26 @@ impl Interpreter {
                         instance.borrow_mut().set(e.name.clone(), value.clone());
                         Ok(value)
                     }
+                }
+            }
+            Expr::Super(e) => {
+                let distance = self.locals.get(&Expr::Super(e.clone())).unwrap();
+                let superclass = match self.environment.borrow().get_at(distance, "super")? {
+                    Literal::Class(c) => c,
+                    _ => todo!("unreachable, must be a class"),
+                };
+                let object = match self.environment.borrow().get_at(&(distance - 1), "this")? {
+                    Literal::Instance(i) => i,
+                    _ => todo!("unreachable, must be an instance"),
+                };
+                let method = superclass.find_method(&e.method.lexeme);
+                if let Some(Literal::Function(m)) = method {
+                    Ok(Literal::Function(Rc::new(m.bind_method(&object))))
+                } else {
+                    Err(LoxResult::new_error(
+                        e.method.line,
+                        &format!("Undefined property {p}.", p = e.method.lexeme),
+                    ))
                 }
             }
             Expr::This(e) => self.look_up_variable(e.keyword.clone(), Expr::This(e.clone())),

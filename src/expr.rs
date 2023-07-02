@@ -1,7 +1,9 @@
 use crate::functions::LoxFunction;
 use crate::lox_class::{LoxClass, LoxInstance};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
+use std::any::TypeId;
 use std::cell::RefCell;
+use std::fmt::Debug;
 use std::fmt::{self, Display, Formatter};
 use std::hash::Hash;
 use std::rc::Rc;
@@ -15,9 +17,15 @@ pub enum Literal {
     String(String),
     Number(f64),
     Function(Rc<LoxFunction>),
-    NativeFunction(Rc<dyn LoxCallable>),
+    NativeFunction(TypeId, Rc<dyn LoxCallable>),
     Class(LoxClass),
     Instance(Rc<RefCell<LoxInstance>>),
+}
+
+impl Literal {
+    pub fn native_function<T: LoxCallable + 'static>(v: T) -> Self {
+        Self::NativeFunction(TypeId::of::<T>(), Rc::new(v))
+    }
 }
 
 // TODO: Verify
@@ -33,7 +41,7 @@ impl core::fmt::Debug for Literal {
             Self::Nil => write!(f, "Nil"),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
-            Self::NativeFunction(arg0) => f
+            Self::NativeFunction(_, arg0) => f
                 .debug_tuple("NativeFunction")
                 .field(&arg0.to_string())
                 .finish(),
@@ -50,7 +58,7 @@ impl Display for Literal {
             Literal::Identifier(i) => i.to_owned(),
             Literal::Boolean(b) => b.to_string(),
             Literal::Nil => String::from("Nil"),
-            Literal::NativeFunction(f) => f.to_string(),
+            Literal::NativeFunction(_, f) => f.to_string(),
             Literal::String(s) => format!("\"{s}\""),
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),
@@ -68,8 +76,28 @@ impl PartialEq for Literal {
             (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
             (Self::String(l0), Self::String(r0)) => l0 == r0,
             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
-            (Self::Function(_l0), Self::Function(_r0)) => todo!("idk, placeholder"),
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            (Self::Function(l0), Self::Function(r0)) => std::ptr::eq(l0.as_ref(), r0.as_ref()),
+            (Literal::Nil, Literal::Nil) => true,
+            (Literal::NativeFunction(ty0, _), Literal::NativeFunction(ty1, ..)) => ty0 == ty1,
+            (Literal::Class(l0), Literal::Class(r0)) => l0 == r0,
+            (Literal::Instance(l0), Literal::Instance(r0)) => l0 == r0,
+            _ => false,
+        }
+    }
+}
+
+impl Hash for Literal {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Literal::Identifier(v) => v.hash(state),
+            Literal::Boolean(v) => v.hash(state),
+            Literal::Nil => 0u8.hash(state),
+            Literal::String(v) => v.hash(state),
+            Literal::Number(v) => if v.is_nan() { f64::NAN } else { *v }.to_bits().hash(state),
+            Literal::Function(v) => ptr_hash(v, state),
+            Literal::NativeFunction(ty, _) => ty.hash(state),
+            Literal::Class(v) => v.hash(state),
+            Literal::Instance(v) => v.borrow().hash(state),
         }
     }
 }
@@ -102,9 +130,29 @@ pub enum Expr {
     Variable(Box<VariableExpr>),
 }
 
+fn ptr_hash<T: Debug, H: std::hash::Hasher>(v: &T, state: &mut H) {
+    let ptr = (v as *const _ as usize);
+    println!("{v:?} {ptr:?}");
+    ptr.hash(state)
+}
+
 impl Hash for Expr {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self as *const _ as usize).hash(state)
+        match self {
+            Expr::Assign(v) => ptr_hash(v, state),
+            Expr::Binary(v) => ptr_hash(v, state),
+            Expr::Call(v) => ptr_hash(v, state),
+            Expr::Conditional(v) => ptr_hash(v, state),
+            Expr::Get(v) => ptr_hash(v, state),
+            Expr::Grouping(v) => ptr_hash(v, state),
+            Expr::Literal(v) => v.hash(state),
+            Expr::Logical(v) => ptr_hash(v, state),
+            Expr::Set(v) => ptr_hash(v, state),
+            Expr::Super(v) => ptr_hash(v, state),
+            Expr::This(v) => ptr_hash(v, state),
+            Expr::Unary(v) => ptr_hash(v, state),
+            Expr::Variable(v) => ptr_hash(v, state),
+        }
     }
 }
 
@@ -123,7 +171,7 @@ impl Display for Expr {
                 Expr::Literal(e) => format!("{e}"),
                 Expr::Logical(e) => format!("{e}"),
                 Expr::Super(e) => format!("{e}"), // TODO: Verify
-                Expr::This(e) => format!("{e}"), // TODO: Verify
+                Expr::This(e) => format!("{e}"),  // TODO: Verify
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
                 Expr::Get(_e) => todo!("Getexpr"),
@@ -449,7 +497,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => format!("{l}"),
             Expr::Logical(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Set(e) => parenthesize("Set", &[&e.object, &e.value]), // TODO: Check?
-            Expr::Super(_e) => parenthesize("Super", &[]), // TODO: Fix
+            Expr::Super(_e) => parenthesize("Super", &[]),               // TODO: Fix
             Expr::This(e) => format!("{e}"),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),

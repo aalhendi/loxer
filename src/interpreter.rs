@@ -1,5 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
+use indexmap::IndexMap;
+
 use crate::{
     environment::Environment,
     expr::{Expr, Literal, LoxCallable},
@@ -12,19 +14,19 @@ use crate::{
 
 pub struct Interpreter {
     pub environment: Rc<RefCell<Environment>>,
-    locals: HashMap<Expr, usize>,
+    locals: IndexMap<Expr, usize>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         let mut environment = Environment::new(None);
 
-        let clock = Literal::NativeFunction(Rc::new(Clock));
+        let clock = Literal::native_function(Clock);
         environment.define("clock", clock);
 
         Self {
             environment: Rc::new(RefCell::new(environment)),
-            locals: HashMap::new(),
+            locals: IndexMap::new(),
         }
     }
 
@@ -248,7 +250,7 @@ impl Interpreter {
 
                         function.call(self, arguments)
                     }
-                    Literal::NativeFunction(function) => {
+                    Literal::NativeFunction(_, function) => {
                         if arguments.len() != function.get_arity() {
                             return Err(LoxResult::new_error(
                                 e.paren.line,
@@ -342,7 +344,7 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
-                    | Literal::NativeFunction(_)
+                    | Literal::NativeFunction(_, _)
                     | Literal::Function(_)
                     | Literal::Class(_) => Err(LoxResult::new_error(
                         e.name.line,
@@ -359,7 +361,7 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
-                    | Literal::NativeFunction(_)
+                    | Literal::NativeFunction(_, _)
                     | Literal::Function(_)
                     | Literal::Class(_) => Err(LoxResult::new_error(
                         e.name.line,
@@ -373,6 +375,8 @@ impl Interpreter {
                 }
             }
             Expr::Super(e) => {
+                dbg!(&self.locals);
+                dbg!(&Expr::Super(e.clone()));
                 let distance = self.locals.get(&Expr::Super(e.clone())).unwrap();
                 let superclass = match self.environment.borrow().get_at(distance, "super")? {
                     Literal::Class(c) => c,
@@ -444,7 +448,7 @@ impl Interpreter {
             | Literal::Number(_)
             | Literal::Class(_)
             | Literal::Instance(_)
-            | Literal::NativeFunction(_)
+            | Literal::NativeFunction(_, _)
             | Literal::Function(_) => true,
         }
     }

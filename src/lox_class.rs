@@ -1,4 +1,7 @@
+use std::hash::Hash;
 use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
+
+use indexmap::IndexMap;
 
 use crate::{
     expr::{Literal, LoxCallable},
@@ -13,6 +16,18 @@ pub struct LoxClass {
     pub name: String,
     pub methods: HashMap<String, LoxFunction>,
     pub superclass: Option<Box<LoxClass>>,
+}
+
+impl PartialEq for LoxClass {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+impl Hash for LoxClass {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self as *const _ as usize).hash(state)
+    }
 }
 
 impl LoxClass {
@@ -80,14 +95,30 @@ impl LoxCallable for LoxClass {
 #[derive(Debug, Clone)]
 pub struct LoxInstance {
     class: LoxClass,
-    fields: HashMap<String, Literal>,
+    fields: IndexMap<String, Literal>,
+}
+
+impl PartialEq for LoxInstance {
+    fn eq(&self, other: &Self) -> bool {
+        self.class == other.class && self.fields == other.fields
+    }
+}
+
+impl Hash for LoxInstance {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.class.hash(state);
+        for (k, v) in self.fields.iter() {
+            k.hash(state);
+            v.hash(state);
+        }
+    }
 }
 
 impl LoxInstance {
     pub fn new(class: LoxClass) -> Self {
         Self {
             class,
-            fields: HashMap::new(),
+            fields: IndexMap::new(),
         }
     }
 

@@ -20,7 +20,8 @@ mod resolver;
 mod stmt;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    // let args: Vec<String> = env::args().collect();
+    let args = vec!["cargo", "test.txt"];
 
     match args.len() {
         1 => run_prompt(),

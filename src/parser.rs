@@ -1,7 +1,7 @@
 use crate::{
     expr::{
         AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, GetExpr, GroupingExpr, Literal,
-        LogicalExpr, SetExpr, ThisExpr, UnaryExpr, VariableExpr,
+        LogicalExpr, SetExpr, SuperExpr, ThisExpr, UnaryExpr, VariableExpr,
     },
     lox_result::LoxResult,
     stmt::{
@@ -18,7 +18,8 @@ pub struct Parser<'a> {
 
 /*
 program        → statement* EOF ;
-classDecl      → "class" IDENTIFIER "{" function* "}" ;
+classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
+                 "{" function* "}" ;
 function       → IDENTIFIER "(" parameters? ")" block ;
 declaration    → classDecl
                | funDecl
@@ -57,9 +58,9 @@ factor         → unary ( ( "/" | "*" ) unary )* ;
 unary          → ( "!" | "-" ) unary | call ;
 call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
 arguments      → expression ( "," expression )* ;
-primary        → NUMBER | STRING | "true" | "false" | "nil"
-               | "(" expression ")"
-               | IDENTIFIER ;
+primary        → "true" | "false" | "nil" | "this"
+               | NUMBER | STRING | IDENTIFIER | "(" expression ")"
+               | "super" "." IDENTIFIER ;
  */
 
 impl<'a> Parser<'a> {
@@ -118,6 +119,20 @@ impl<'a> Parser<'a> {
             None => unreachable!("Ran out of tokens"),
         };
 
+        let superclass = if let Some(t) = self.tokens.next_if(|t| t.token_type == TokenType::Less) {
+            if let Some(next_t) = self.tokens.peek() {
+                if let TokenType::Identifier(_) = &next_t.token_type {
+                    Some(VariableExpr::new(self.tokens.next().unwrap().clone()))
+                } else {
+                    return Err(LoxResult::new_error(t.line, "Expect superclass name."));
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         if let Some(t) = self.tokens.peek() {
             if let TokenType::LeftBrace = &t.token_type {
                 self.tokens.next();
@@ -145,7 +160,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Stmt::Class(Box::new(ClassStmt::new(name.clone(), methods))))
+        Ok(Stmt::Class(Box::new(ClassStmt::new(
+            name.clone(),
+            methods,
+            superclass,
+        ))))
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, LoxResult> {
@@ -777,6 +796,37 @@ impl<'a> Parser<'a> {
                 TokenType::String(s) => Ok(Expr::Literal(Literal::String(s.to_string()))),
                 TokenType::Number(n) => Ok(Expr::Literal(Literal::Number(*n))),
                 TokenType::This => Ok(Expr::This(Box::new(ThisExpr::new(t.clone())))),
+                TokenType::Super => {
+                    let keyword = t;
+                    if let Some(t) = self.tokens.peek() {
+                        if t.token_type == TokenType::Dot {
+                            self.tokens.next();
+                        } else {
+                            return Err(LoxResult::new_error(
+                                t.line,
+                                &format!("at {}. Expect '.' after 'super'", t.lexeme),
+                            ));
+                        }
+                    }
+
+                    let method = if let Some(t) = self.tokens.peek() {
+                        if let TokenType::Identifier(_) = &t.token_type {
+                            self.tokens.next().unwrap()
+                        } else {
+                            return Err(LoxResult::new_error(
+                                t.line,
+                                &format!("at {}. Expect superclass method name.", t.lexeme),
+                            ));
+                        }
+                    } else {
+                        unreachable!("Ran out of tokens")
+                    };
+
+                    Ok(Expr::Super(Box::new(SuperExpr::new(
+                        keyword.clone(),
+                        method.clone(),
+                    ))))
+                }
                 TokenType::LeftParen => {
                     let expr = self.expression()?;
                     if let Some(t) = self.tokens.peek() {

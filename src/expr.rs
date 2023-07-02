@@ -96,7 +96,7 @@ pub enum Expr {
     Literal(Literal),
     Logical(Box<LogicalExpr>),
     Set(Box<SetExpr>),
-    // Super,
+    Super(Box<SuperExpr>),
     This(Box<ThisExpr>),
     Unary(Box<UnaryExpr>),
     Variable(Box<VariableExpr>),
@@ -104,7 +104,14 @@ pub enum Expr {
 
 impl Hash for Expr {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (self as *const _ as usize).hash(state)
+        match self {
+            Expr::Super(e) => {
+                e.keyword.hash(state);
+                e.method.hash(state);
+            }
+            // Hash raw ptr for everything else
+            _ => (self as *const _ as usize).hash(state),
+        }
     }
 }
 
@@ -122,6 +129,7 @@ impl Display for Expr {
                 Expr::Grouping(e) => format!("{e}"),
                 Expr::Literal(e) => format!("{e}"),
                 Expr::Logical(e) => format!("{e}"),
+                Expr::Super(e) => format!("{e}"), // TODO: Verify
                 Expr::This(e) => format!("{e}"), // TODO: Verify
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
@@ -413,6 +421,25 @@ impl Display for ThisExpr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SuperExpr {
+    pub keyword: Token,
+    pub method: Token,
+}
+
+impl SuperExpr {
+    pub fn new(keyword: Token, method: Token) -> Self {
+        Self { keyword, method }
+    }
+}
+
+impl Display for SuperExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", parenthesize(&self.keyword.lexeme, &[]))
+        // TODO: AST printer
+    }
+}
+
 fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
     let mut builder = String::new();
     builder.push('(');
@@ -429,6 +456,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => format!("{l}"),
             Expr::Logical(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Set(e) => parenthesize("Set", &[&e.object, &e.value]), // TODO: Check?
+            Expr::Super(_e) => parenthesize("Super", &[]), // TODO: Fix
             Expr::This(e) => format!("{e}"),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),
@@ -460,6 +488,7 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
             }
             Expr::Logical(e) => format!("{} {} {}", e.left, e.right, e.operator.lexeme),
             Expr::Set(_e) => todo!("RPN for set exprs"),
+            Expr::Super(_e) => todo!("RPN for super exprs"),
             Expr::This(e) => format!("{e}"),
             Expr::Unary(e) => format!("{} {}", e.right, e.operator),
             Expr::Variable(_e) => todo!(),

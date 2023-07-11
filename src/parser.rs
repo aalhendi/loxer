@@ -14,6 +14,7 @@ use crate::{
 /// Recursive decent parser
 pub struct Parser<'a> {
     tokens: std::iter::Peekable<std::slice::Iter<'a, Token>>,
+    pub had_error: bool,
 }
 
 /*
@@ -67,16 +68,23 @@ impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
         Self {
             tokens: tokens.iter().peekable(),
+            had_error: false,
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Stmt>, LoxResult> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ()> {
         let mut statements = Vec::new();
         while let Some(t) = self.tokens.peek() {
             if t.token_type == TokenType::Eof {
                 break;
             }
-            statements.push(self.declaration()?);
+            if let Ok(d) = self.declaration() {
+                statements.push(d);
+            }
+            // TODO: Log errors recursively?
+        }
+        if self.had_error {
+            return Err(());
         }
         Ok(statements)
     }
@@ -113,18 +121,24 @@ impl<'a> Parser<'a> {
                 if let TokenType::Identifier(_) = &t.token_type {
                     self.tokens.next().unwrap()
                 } else {
-                    return Err(LoxResult::new_error(t.line, "Expect class name."));
+                    let token = &(*t).clone();
+                    return Err(self.error(token, "Expect class name."));
                 }
             }
             None => unreachable!("Ran out of tokens"),
         };
 
-        let superclass = if let Some(t) = self.tokens.next_if(|t| t.token_type == TokenType::Less) {
+        let superclass = if self
+            .tokens
+            .next_if(|t| t.token_type == TokenType::Less)
+            .is_some()
+        {
             if let Some(next_t) = self.tokens.peek() {
                 if let TokenType::Identifier(_) = &next_t.token_type {
                     Some(VariableExpr::new(self.tokens.next().unwrap().clone()))
                 } else {
-                    return Err(LoxResult::new_error(t.line, "Expect superclass name."));
+                    let token = &(*next_t).clone();
+                    return Err(self.error(token, "Expect superclass name."));
                 }
             } else {
                 None
@@ -137,10 +151,8 @@ impl<'a> Parser<'a> {
             if let TokenType::LeftBrace = &t.token_type {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    "Expect `{` before class body.",
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect '{' before class body."));
             }
         }
 
@@ -156,7 +168,8 @@ impl<'a> Parser<'a> {
             if let TokenType::RightBrace = &t.token_type {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(t.line, "Expect `}` after class body."));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect '}' after class body."));
             }
         }
 
@@ -173,12 +186,12 @@ impl<'a> Parser<'a> {
                 if let TokenType::Identifier(_) = &t.token_type {
                     self.tokens.next().unwrap()
                 } else if let TokenType::Eof = &t.token_type {
-                    return Err(LoxResult::new_error(t.line, "Expect `;` after expression."));
+                    // TODO: unreachable?
+                    let token = &(*t).clone();
+                    return Err(self.error(token, "Expect variable name."));
                 } else {
-                    return Err(LoxResult::new_error(
-                        t.line,
-                        "Expect variable name after `var` keyword.",
-                    ));
+                    let token = &(*t).clone();
+                    return Err(self.error(token, "Expect variable name."));
                 }
             }
             _ => unreachable!("ran out of tokens"),
@@ -197,10 +210,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Semicolon {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect ';' after variable declaration", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ';' after variable declaration"));
             }
         }
 
@@ -240,10 +251,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::LeftParen {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect '(' after `while`.", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect '(' after 'while'."));
             }
         }
         let condition = self.expression()?;
@@ -251,10 +260,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::RightParen {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect ')' after condition", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ')' after condition"));
             }
         }
         let body = self.statement()?;
@@ -267,10 +274,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::LeftParen {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect '(' after `for`.", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect '(' after 'for'."));
             }
         }
 
@@ -307,10 +312,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Semicolon {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect ';' after loop condition.", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ';' after loop condition."));
             }
         }
 
@@ -330,23 +333,21 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::RightParen {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect ')' after for clauses.", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ')' after for clauses."));
             }
         }
 
         let mut body = self.statement()?;
 
         // If an increment stmt exists, append it so it executes after the body
+        // TODO: Verify generated ast nodes vs while
         if let Some(increment) = increment {
-            let increment = Stmt::Expression(Box::new(ExpressionStmt::new(increment)));
-            if let Stmt::Block(block) = &mut body {
-                block.statements.push(increment);
-            } else {
-                body = Stmt::Block(Box::new(BlockStmt::new(vec![body, increment])))
-            };
+            let stmts = vec![
+                body,
+                Stmt::Expression(Box::new(ExpressionStmt::new(increment))),
+            ];
+            body = Stmt::Block(Box::new(BlockStmt::new(stmts)));
         }
 
         body = Stmt::While(Box::new(WhileStmt::new(condition, body)));
@@ -364,10 +365,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::LeftParen {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect '(' after if.", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect '(' after if."));
             }
         }
         let condition = self.expression()?;
@@ -375,10 +374,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::RightParen {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {} Expect ')' after if condition.", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ')' after if condition."));
             }
         }
         let then_branch = self.statement()?;
@@ -402,10 +399,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Semicolon {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {}. Expect ';' after expression", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ';' after expression"));
             }
         }
         Ok(Stmt::Print(Box::new(PrintStmt::new(value))))
@@ -428,10 +423,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Semicolon {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {}. Expect ';' after return value", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ';' after return value."));
             }
         }
 
@@ -447,10 +440,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Semicolon {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {}. Expect ';' after expression", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ';' after expression."));
             }
         }
         Ok(Stmt::Expression(Box::new(ExpressionStmt::new(expr))))
@@ -462,10 +453,8 @@ impl<'a> Parser<'a> {
                 if let TokenType::Identifier(_) = &t.token_type {
                     self.tokens.next().unwrap()
                 } else {
-                    return Err(LoxResult::new_error(
-                        t.line,
-                        &format!("Expect {kind} name."),
-                    ));
+                    let token = &(*t).clone();
+                    return Err(self.error(token, &format!("Expect {kind} name.")));
                 }
             }
             _ => unreachable!("Ran out of tokens"),
@@ -475,10 +464,8 @@ impl<'a> Parser<'a> {
             if let TokenType::LeftParen = &t.token_type {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("Expect `(` after {kind} name."),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, &format!("Expect '(' after {kind} name.")));
             }
         }
 
@@ -487,27 +474,22 @@ impl<'a> Parser<'a> {
             if t.token_type != TokenType::RightParen {
                 // Do-while
                 if params.len() >= 255 {
-                    return Err(LoxResult::new_error(
-                        t.line,
-                        "Can't have more than 255 parameters",
-                    ));
+                    return Err(self.error(t, "Can't have more than 255 parameters."));
                 }
                 params.push(if let TokenType::Identifier(_) = &t.token_type {
                     self.tokens.next().unwrap().clone()
                 } else {
-                    return Err(LoxResult::new_error(t.line, "Expect parameter name."));
+                    return Err(self.error(t, "Expect parameter name."));
                 });
                 while let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma) {
-                    if params.len() >= 255 {
-                        return Err(LoxResult::new_error(
-                            t.line,
-                            "Can't have more than 255 parameters",
-                        ));
+                    if params.len() >= 255 && !self.had_error {
+                        let next_t = (*self.tokens.peek().unwrap()).clone();
+                        return Err(self.error(&next_t, "Can't have more than 255 parameters."));
                     }
                     params.push(if let TokenType::Identifier(_) = &t.token_type {
                         self.tokens.next().unwrap().clone()
                     } else {
-                        return Err(LoxResult::new_error(t.line, "Expect parameter name."));
+                        return Err(self.error(t, "Expect paramter name."));
                     });
                 }
             }
@@ -517,10 +499,8 @@ impl<'a> Parser<'a> {
             if let TokenType::RightParen = &t.token_type {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("Expect `)` after {kind} name."),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ')' after parameters."));
             }
         }
 
@@ -528,10 +508,8 @@ impl<'a> Parser<'a> {
             if let TokenType::LeftBrace = &t.token_type {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("Expect `{{` after {kind} name."),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, &format!("Expect '{{' before {kind} body.")));
             }
         }
 
@@ -556,10 +534,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::RightBrace {
                 self.tokens.next();
             } else {
-                return Err(LoxResult::new_error(
-                    t.line,
-                    &format!("at {}. Expect '}}' after block", t.lexeme),
-                ));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect '}' after block."));
             }
         }
         Ok(statements)
@@ -581,13 +557,8 @@ impl<'a> Parser<'a> {
                 if t.token_type == TokenType::Colon {
                     self.tokens.next();
                 } else {
-                    return Err(LoxResult::new_error(
-                        t.line,
-                        &format!(
-                            "at {}. Expect ':' after truthy expr in conditional",
-                            t.lexeme
-                        ),
-                    ));
+                    let token = &(*t).clone();
+                    return Err(self.error(token, "Expect ':' after truthy expression"));
                 }
             }
             let right = self.conditional()?;
@@ -605,6 +576,7 @@ impl<'a> Parser<'a> {
                 // Recursively parse right-hand side since assignment is right-associative
                 let value = self.assignment()?;
 
+                // TODO: Refactor
                 match expr {
                     Expr::Variable(s) => {
                         return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))));
@@ -612,12 +584,10 @@ impl<'a> Parser<'a> {
                     Expr::Get(e) => {
                         return Ok(Expr::Set(Box::new(SetExpr::new(e.object, e.name, value))));
                     }
-                    _ => eprintln!(
-                        "{}",
-                        LoxResult::new_error(equals.line, "Invalid assignment target.")
-                    ),
-                    // NOTE: Err is reported but not thrown here, parser is not in confused state where it needs to panic and sync
+                    _ => {}
                 }
+                // NOTE: Err is reported but not thrown here, parser is not in confused state where it needs to panic and sync
+                return Err(self.error(equals, "Invalid assignment target."));
             }
         }
 
@@ -741,7 +711,8 @@ impl<'a> Parser<'a> {
                         if let TokenType::Identifier(_) = &t.token_type {
                             self.tokens.next().unwrap()
                         } else {
-                            return Err(LoxResult::new_error(t.line, "Expect property after `.`."));
+                            let token = &(*t).clone();
+                            return Err(self.error(token, "Expect property name after '.'."));
                         }
                     }
                     None => unreachable!("Ran out of tokens"),
@@ -759,12 +730,17 @@ impl<'a> Parser<'a> {
     fn finish_call(&mut self, callee: Expr) -> Result<Expr, LoxResult> {
         let mut arguments = Vec::new();
 
-        if let Some(t) = self.tokens.peek().cloned() {
+        if let Some(t) = self.tokens.peek() {
             if t.token_type != TokenType::RightParen {
                 // Do-while
                 arguments.push(self.expression()?);
                 while let Some(_nxt_t) = self.tokens.next_if(|t| t.token_type == TokenType::Comma) {
-                    arguments.push(self.expression()?);
+                    if arguments.len() >= 255 && !self.had_error {
+                        let token = &(*self.tokens.peek().unwrap()).clone();
+                        return Err(self.error(token, "Can't have more than 255 arguments."));
+                    } else {
+                        arguments.push(self.expression()?);
+                    }
                 }
             }
         }
@@ -773,7 +749,8 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::RightParen {
                 self.tokens.next().unwrap()
             } else {
-                return Err(LoxResult::new_error(t.line, "Expect ')' after arguments."));
+                let token = &(*t).clone();
+                return Err(self.error(token, "Expect ')' after arguments."));
             }
         } else {
             unreachable!("ran out of tokens lol")
@@ -802,10 +779,8 @@ impl<'a> Parser<'a> {
                         if t.token_type == TokenType::Dot {
                             self.tokens.next();
                         } else {
-                            return Err(LoxResult::new_error(
-                                t.line,
-                                &format!("at {}. Expect '.' after 'super'", t.lexeme),
-                            ));
+                            let token = &(*t).clone();
+                            return Err(self.error(token, "Expect '.' after 'super'."));
                         }
                     }
 
@@ -813,10 +788,8 @@ impl<'a> Parser<'a> {
                         if let TokenType::Identifier(_) = &t.token_type {
                             self.tokens.next().unwrap()
                         } else {
-                            return Err(LoxResult::new_error(
-                                t.line,
-                                &format!("at {}. Expect superclass method name.", t.lexeme),
-                            ));
+                            let token = &(*t).clone();
+                            return Err(self.error(token, "Expect superclass method name."));
                         }
                     } else {
                         unreachable!("Ran out of tokens")
@@ -833,10 +806,8 @@ impl<'a> Parser<'a> {
                         if t.token_type == TokenType::RightParen {
                             self.tokens.next();
                         } else {
-                            return Err(LoxResult::new_error(
-                                t.line,
-                                &format!("at {}. Expect ')' after expression", t.lexeme),
-                            ));
+                            let token = &(*t).clone();
+                            return Err(self.error(token, "Expect ')' after expression"));
                         }
                     }
                     Ok(Expr::Grouping(Box::new(GroupingExpr::new(expr))))
@@ -844,10 +815,10 @@ impl<'a> Parser<'a> {
                 TokenType::Identifier(_) => {
                     Ok(Expr::Variable(Box::new(VariableExpr::new(t.clone()))))
                 }
-                _ => match self.tokens.peek() {
-                    Some(t) => Err(LoxResult::new_error(t.line, "expected expression")),
-                    None => Err(LoxResult::new_error(t.line, "EOF, something unterminated")), // TODO: Better error msg
-                },
+                _ => {
+                    // TODO: Error?
+                    Err(self.error(t, "Expect expression."))
+                }
             }
         } else {
             unreachable!("Parser peeks so it can't run out");
@@ -874,6 +845,11 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+    }
+
+    fn error(&mut self, token: &Token, message: &str) -> LoxResult {
+        self.had_error = true;
+        LoxResult::parse_error(token, message)
     }
 }
 

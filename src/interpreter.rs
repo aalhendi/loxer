@@ -19,7 +19,7 @@ impl Interpreter {
     pub fn new() -> Self {
         let mut environment = Environment::new(None);
 
-        let clock = Literal::NativeFunction(Rc::new(Clock));
+        let clock = Literal::native_function(Clock);
         environment.define("clock", clock);
 
         Self {
@@ -46,10 +46,10 @@ impl Interpreter {
                     match sc {
                         Literal::Class(c) => Some(Box::new(c)),
                         _ => {
-                            return Err(LoxResult::new_error(
-                                superclass.name.line,
+                            return Err(LoxResult::runtime_error(
+                                &superclass.name,
                                 "Superclass must be a class.",
-                            ))
+                            ));
                         }
                     }
                 } else {
@@ -168,7 +168,7 @@ impl Interpreter {
                     TokenType::Slash => {
                         let (n1, n2) = self.check_num(&left, &right, &e.operator)?;
                         if n2 == 0.0 {
-                            return Err(LoxResult::new_error(e.operator.line, "Division by zero"));
+                            return Err(LoxResult::runtime_error(&e.operator, "Division by zero"));
                         }
                         Ok(Literal::Number(n1 / n2))
                     }
@@ -206,12 +206,9 @@ impl Interpreter {
                             Ok(Literal::String(format!("{n}{s}")))
                         }
                         (Literal::Number(n1), Literal::Number(n2)) => Ok(Literal::Number(n1 + n2)),
-                        _ => Err(LoxResult::new_error(
-                            e.operator.line,
-                            &format!(
-                                "Operands must both be numbers. Operator: `{lexeme}`",
-                                lexeme = e.operator.lexeme
-                            ),
+                        _ => Err(LoxResult::runtime_error(
+                            &e.operator,
+                            "Operands must be two numbers or two strings.",
                         )),
                     },
                     _ => unreachable!("Invalid operator?"),
@@ -230,14 +227,14 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Instance(_)
-                    | Literal::Number(_) => Err(LoxResult::new_error(
-                        e.paren.line,
-                        "Can only call classes and functions",
+                    | Literal::Number(_) => Err(LoxResult::runtime_error(
+                        &e.paren,
+                        "Can only call functions and classes.",
                     )),
                     Literal::Function(function) => {
                         if arguments.len() != function.get_arity() {
-                            return Err(LoxResult::new_error(
-                                e.paren.line,
+                            return Err(LoxResult::runtime_error(
+                                &e.paren,
                                 &format!(
                                     "Expected {} arguments but got {}.",
                                     function.get_arity(),
@@ -248,10 +245,10 @@ impl Interpreter {
 
                         function.call(self, arguments)
                     }
-                    Literal::NativeFunction(function) => {
+                    Literal::NativeFunction(_, function) => {
                         if arguments.len() != function.get_arity() {
-                            return Err(LoxResult::new_error(
-                                e.paren.line,
+                            return Err(LoxResult::runtime_error(
+                                &e.paren,
                                 &format!(
                                     "Expected {} arguments but got {}.",
                                     function.get_arity(),
@@ -266,8 +263,8 @@ impl Interpreter {
                         // TODO: Is this the way to go or is there a cleaner implementation?
                         let class = &class as &dyn LoxCallable;
                         if arguments.len() != class.get_arity() {
-                            return Err(LoxResult::new_error(
-                                e.paren.line,
+                            return Err(LoxResult::runtime_error(
+                                &e.paren,
                                 &format!(
                                     "Expected {} arguments but got {}.",
                                     class.get_arity(),
@@ -287,12 +284,9 @@ impl Interpreter {
                 match e.operator.token_type {
                     TokenType::Minus => match right {
                         Literal::Number(n) => Ok(Literal::Number(-n)),
-                        _ => Err(LoxResult::new_error(
-                            e.operator.line,
-                            &format!(
-                                "Operand must be a number. Operator: `{lexeme}`",
-                                lexeme = e.operator.lexeme
-                            ),
+                        _ => Err(LoxResult::runtime_error(
+                            &e.operator,
+                            "Operand must be a number.",
                         )),
                     },
                     TokenType::Bang => Ok(Literal::Boolean(!self.is_truthy(&right))),
@@ -342,11 +336,11 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
-                    | Literal::NativeFunction(_)
+                    | Literal::NativeFunction(_, _)
                     | Literal::Function(_)
-                    | Literal::Class(_) => Err(LoxResult::new_error(
-                        e.name.line,
-                        "Only instances have properties",
+                    | Literal::Class(_) => Err(LoxResult::runtime_error(
+                        &e.name,
+                        "Only instances have properties.",
                     )),
                     Literal::Instance(instance) => instance.borrow().get(&e.name, &instance),
                 }
@@ -359,11 +353,11 @@ impl Interpreter {
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
-                    | Literal::NativeFunction(_)
+                    | Literal::NativeFunction(_, _)
                     | Literal::Function(_)
-                    | Literal::Class(_) => Err(LoxResult::new_error(
-                        e.name.line,
-                        "Only instances have fields",
+                    | Literal::Class(_) => Err(LoxResult::runtime_error(
+                        &e.name,
+                        "Only instances have fields.",
                     )),
                     Literal::Instance(instance) => {
                         let value = self.evaluate(&e.value)?;
@@ -386,9 +380,9 @@ impl Interpreter {
                 if let Some(Literal::Function(m)) = method {
                     Ok(Literal::Function(Rc::new(m.bind_method(&object))))
                 } else {
-                    Err(LoxResult::new_error(
-                        e.method.line,
-                        &format!("Undefined property {p}.", p = e.method.lexeme),
+                    Err(LoxResult::runtime_error(
+                        &e.method,
+                        &format!("Undefined property '{p}'.", p = e.method.lexeme),
                     ))
                 }
             }
@@ -424,13 +418,7 @@ impl Interpreter {
     ) -> Result<(f64, f64), LoxResult> {
         match (left, right) {
             (Literal::Number(n1), Literal::Number(n2)) => Ok((*n1, *n2)),
-            _ => Err(LoxResult::new_error(
-                op.line,
-                &format!(
-                    "Operands must be numbers. Operator: `{lexeme}`",
-                    lexeme = op.lexeme
-                ),
-            )),
+            _ => Err(LoxResult::runtime_error(op, "Operands must be numbers.")),
         }
     }
 
@@ -444,7 +432,7 @@ impl Interpreter {
             | Literal::Number(_)
             | Literal::Class(_)
             | Literal::Instance(_)
-            | Literal::NativeFunction(_)
+            | Literal::NativeFunction(_, _)
             | Literal::Function(_) => true,
         }
     }

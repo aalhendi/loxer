@@ -45,9 +45,9 @@ impl Environment {
                     return e.borrow().get(name);
                 }
 
-                Err(LoxResult::new_error(
-                    name.line,
-                    &format!("Undefined variable `{}`.", name.lexeme),
+                Err(LoxResult::runtime_error(
+                    &name,
+                    &format!("Undefined variable '{}'.", name.lexeme),
                 ))
             }
         }
@@ -61,9 +61,9 @@ impl Environment {
             if let Some(e) = &mut self.enclosing {
                 return e.borrow_mut().assign(name, value);
             }
-            Err(LoxResult::new_error(
-                name.line,
-                &format!("Undefined variable `{}`.", name.lexeme),
+            Err(LoxResult::runtime_error(
+                &name,
+                &format!("Undefined variable '{}'.", name.lexeme),
             ))
         }
     }

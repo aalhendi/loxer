@@ -3,7 +3,7 @@ use std::{collections::HashMap, iter::Peekable, str::Chars};
 
 pub struct Scanner<'a> {
     source: Peekable<Chars<'a>>,
-    line: u32,
+    line: usize,
     tokens: Vec<Token>,
 }
 
@@ -16,7 +16,8 @@ impl Scanner<'_> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
+    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, LoxResult> {
+        let mut had_error = None;
         let keywords: HashMap<&str, TokenType> = HashMap::from([
             ("and", TokenType::And),
             ("class", TokenType::Class),
@@ -91,6 +92,7 @@ impl Scanner<'_> {
                         for next_ch in self.source.by_ref() {
                             // Consume till newline
                             if next_ch == '\n' {
+                                self.line += 1;
                                 break;
                             }
                         }
@@ -115,20 +117,21 @@ impl Scanner<'_> {
                 '"' => {
                     // TODO: Handle escape sequences
                     lexeme = String::new(); // reset text to trim first quote
-                    let mut return_val =
-                        Err(LoxResult::new_error(self.line, "Unterminated string."));
+                    let mut is_term = false;
                     for next_ch in self.source.by_ref() {
                         if next_ch == '"' {
-                            return_val = Ok(Some(TokenType::String(lexeme.clone())));
+                            is_term = true;
                             break;
-                        } else {
-                            if next_ch == '\n' {
-                                self.line += 1;
-                            }
-                            lexeme += &next_ch.to_string();
+                        } else if next_ch == '\n' {
+                            self.line += 1;
                         }
+                        lexeme += &next_ch.to_string();
                     }
-                    return_val
+                    if is_term {
+                        Ok(Some(TokenType::String(lexeme.clone())))
+                    } else {
+                        Err(LoxResult::error(self.line, "Unterminated string."))
+                    }
                 }
                 _ if ch.is_ascii_digit() => {
                     while let Some(next_ch) =
@@ -155,8 +158,13 @@ impl Scanner<'_> {
                     // TODO: unwrap
                     Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
                 }
-                _ if ch.is_ascii_alphabetic() => {
-                    while let Some(next_ch) = self.source.next_if(|ch| ch.is_ascii_alphanumeric()) {
+
+                // TODO: dont allow '_' only as identifier ?
+                _ if ch.is_ascii_alphabetic() || ch == '_' => {
+                    while let Some(next_ch) = self
+                        .source
+                        .next_if(|ch| ch.is_ascii_alphanumeric() || ch == &'_')
+                    {
                         lexeme += &next_ch.to_string();
                     }
 
@@ -166,10 +174,10 @@ impl Scanner<'_> {
                         None => Ok(Some(TokenType::Identifier(lexeme.clone()))),
                     }
                 }
-                _ => Err(LoxResult::new_error(
-                    self.line,
-                    &format!("Unexpected Character \"{ch}\""),
-                )),
+                _ => {
+                    Err(LoxResult::error(self.line, "Unexpected character."))
+                    // ERROR: Error propagation
+                }
             };
 
             match token_type {
@@ -179,14 +187,20 @@ impl Scanner<'_> {
                             .push(Token::new(t, lexeme.to_owned(), self.line))
                     }
                 }
-                Err(e) => eprintln!("{e}"),
+                Err(e) => {
+                    had_error = Some(e);
+                }
             }
         }
 
         self.tokens
             .push(Token::new(TokenType::Eof, "".to_owned(), self.line));
 
-        &self.tokens
+        if let Some(e) = had_error {
+            Err(e)
+        } else {
+            Ok(&self.tokens)
+        }
     }
 
     fn scan_block_comment(&mut self) -> Result<(), LoxResult> {
@@ -208,10 +222,7 @@ impl Scanner<'_> {
                 }
             }
         }
-        Err(LoxResult::new_error(
-            self.line,
-            "Unterminated block comment",
-        ))
+        Err(LoxResult::error(self.line, "Unterminated block comment"))
     }
 }
 
@@ -222,6 +233,7 @@ fn test_bool() {
     let mut scanner = Scanner::new(source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
+        .unwrap()
         .iter()
         .map(|t| &t.token_type)
         .collect();
@@ -245,6 +257,7 @@ fn test_number() {
     let mut scanner = Scanner::new(&source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
+        .unwrap()
         .iter()
         .map(|t| &t.token_type)
         .collect();
@@ -274,6 +287,7 @@ fn test_comment() {
     let mut scanner = Scanner::new(&source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
+        .unwrap()
         .iter()
         .map(|t| &t.token_type)
         .collect();

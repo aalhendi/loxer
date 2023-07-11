@@ -6,6 +6,7 @@ use std::{
 mod lox_result;
 use lox_result::LoxResult;
 mod token;
+use resolver::Resolver;
 use token::{Token, TokenType};
 mod scanner;
 use scanner::Scanner;
@@ -36,14 +37,14 @@ fn main() {
 fn run_file(file_path: &str) -> std::io::Result<()> {
     let contents = fs::read_to_string(file_path)?;
     let mut interpreter = Interpreter::new();
-    if let Err((e, code)) = run(&contents, &mut interpreter) {
-        // EX_DATAERR (65) User input data was incorrect in some way.
-        // EX_SOFTWARE (70) Internal software error. Limited to non-OS errors.
-        eprintln!("{e}");
-        std::process::exit(code);
+    // EX_DATAERR (65) User input data was incorrect in some way.
+    // EX_SOFTWARE (70) Internal software error. Limited to non-OS errors.
+    match run(&contents, &mut interpreter) {
+        Ok(_) => std::process::exit(0),
+        Err(LoxResult::RuntimeError { .. }) => std::process::exit(70),
+        Err(LoxResult::ParseError { .. }) => std::process::exit(65),
+        _ => std::process::exit(200), // TODO: TEMP CATCH ALL TO FIX ERR CODES
     }
-
-    Ok(())
 }
 
 /// Goes into prompt-mode. Starts a REPL:
@@ -58,10 +59,8 @@ fn run_prompt() {
                 if line.is_empty() {
                     break;
                 }
-                // TODO: Error is not propagating correctly
-                if let Err((e, _code)) = run(&line, &mut interpreter) {
-                    eprintln!("{e}")
-                }
+                // TODO: Error is being discarded
+                let _ = run(&line, &mut interpreter);
                 print!("> ");
                 io::stdout().flush().expect("Unable to flush stdout");
             }
@@ -71,21 +70,24 @@ fn run_prompt() {
 }
 
 /// On error, returns an instance of LoxResult::Error and an ExitCode
-fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), (LoxResult, i32)> {
+fn run(source: &str, interpreter: &mut Interpreter) -> Result<(), LoxResult> {
     let mut scanner = Scanner::new(source);
-    let tokens = scanner.scan_tokens().to_vec();
+    let tokens = scanner.scan_tokens()?.to_vec();
+
     let mut parser = parser::Parser::new(&tokens);
     let statements = match parser.parse() {
         Ok(s) => s,
-        Err(err) => return Err((err, 65)),
+        Err(_) => return Err(LoxResult::ParseError { token: Token::new(TokenType::Eof, "".to_string(), 0), message: "".to_string() }),
     };
-    let mut resolver = resolver::Resolver::new(interpreter);
-    match resolver.resolve_stmts(&statements) {
-        Ok(_) => {}
-        Err(e) => return Err((e, 70)), // TODO: Err code?
-    };
-    match interpreter.interpret(&statements) {
-        Ok(_) => Ok(()),
-        Err(e) => Err((e, 70)),
+
+    let mut resolver = Resolver::new(interpreter);
+    resolver.resolve_stmts(&statements)?;
+
+    if !resolver.had_error {
+        interpreter.interpret(&statements)?;
+    } else {
+        std::process::exit(65);
     }
+
+    Ok(())
 }

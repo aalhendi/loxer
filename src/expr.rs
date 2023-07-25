@@ -1,8 +1,9 @@
 use crate::functions::LoxFunction;
 use crate::lox_class::{LoxClass, LoxInstance};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
+use std::any::TypeId;
 use std::cell::RefCell;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::Hash;
 use std::rc::Rc;
 
@@ -15,9 +16,32 @@ pub enum Literal {
     String(String),
     Number(f64),
     Function(Rc<LoxFunction>),
-    NativeFunction(Rc<dyn LoxCallable>),
+    // TODO: Is typeId needed?
+    NativeFunction(TypeId, Rc<dyn LoxCallable>),
     Class(LoxClass),
     Instance(Rc<RefCell<LoxInstance>>),
+}
+
+impl Literal {
+    pub fn native_function<T: LoxCallable + 'static>(v: T) -> Self {
+        Self::NativeFunction(TypeId::of::<T>(), Rc::new(v))
+    }
+}
+
+impl Hash for Literal {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Literal::Identifier(v) => v.hash(state),
+            Literal::Boolean(v) => v.hash(state),
+            Literal::Nil => 0u8.hash(state),
+            Literal::String(v) => v.hash(state),
+            Literal::Number(v) => if v.is_nan() { f64::NAN } else { *v }.to_bits().hash(state),
+            Literal::Function(v) => ptr_hash(v, state),
+            Literal::NativeFunction(ty, _) => ty.hash(state),
+            Literal::Class(v) => v.hash(state),
+            Literal::Instance(v) => v.borrow().hash(state),
+        }
+    }
 }
 
 // TODO: Verify
@@ -30,10 +54,10 @@ impl core::fmt::Debug for Literal {
         match self {
             Self::Identifier(arg0) => f.debug_tuple("Identifier").field(arg0).finish(),
             Self::Boolean(arg0) => f.debug_tuple("Boolean").field(arg0).finish(),
-            Self::Nil => write!(f, "Nil"),
+            Self::Nil => write!(f, "nil"),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
-            Self::NativeFunction(arg0) => f
+            Self::NativeFunction(_, arg0) => f
                 .debug_tuple("NativeFunction")
                 .field(&arg0.to_string())
                 .finish(),
@@ -49,9 +73,9 @@ impl Display for Literal {
         let v = match self {
             Literal::Identifier(i) => i.to_owned(),
             Literal::Boolean(b) => b.to_string(),
-            Literal::Nil => String::from("Nil"),
-            Literal::NativeFunction(f) => f.to_string(),
-            Literal::String(s) => format!("\"{s}\""),
+            Literal::Nil => String::from("nil"),
+            Literal::NativeFunction(_, f) => f.to_string(),
+            Literal::String(s) => s.to_string(),
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),
             Literal::Class(c) => LoxCallable::to_string(c),
@@ -68,8 +92,12 @@ impl PartialEq for Literal {
             (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
             (Self::String(l0), Self::String(r0)) => l0 == r0,
             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
-            (Self::Function(_l0), Self::Function(_r0)) => todo!("idk, placeholder"),
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            (Self::Function(l0), Self::Function(r0)) => std::ptr::eq(l0.as_ref(), r0.as_ref()),
+            (Self::Nil, Self::Nil) => true,
+            (Self::NativeFunction(ty0, _), Self::NativeFunction(ty1, _)) => ty0 == ty1,
+            (Self::Class(l0), Self::Class(r0)) => l0.name == r0.name,
+            (Self::Instance(l0), Self::Instance(r0)) => l0 == r0,
+            _ => false,
         }
     }
 }
@@ -102,15 +130,28 @@ pub enum Expr {
     Variable(Box<VariableExpr>),
 }
 
+fn ptr_hash<T: Debug, H: std::hash::Hasher>(v: &T, state: &mut H) {
+    let ptr = v as *const _ as usize;
+    // println!("{v:?} {ptr:?}");
+    ptr.hash(state)
+}
+
 impl Hash for Expr {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            Expr::Super(e) => {
-                e.keyword.hash(state);
-                e.method.hash(state);
-            }
-            // Hash raw ptr for everything else
-            _ => (self as *const _ as usize).hash(state),
+            Expr::Assign(v) => ptr_hash(v, state),
+            Expr::Binary(v) => ptr_hash(v, state),
+            Expr::Call(v) => ptr_hash(v, state),
+            Expr::Conditional(v) => ptr_hash(v, state),
+            Expr::Get(v) => ptr_hash(v, state),
+            Expr::Grouping(v) => ptr_hash(v, state),
+            Expr::Literal(v) => v.hash(state),
+            Expr::Logical(v) => ptr_hash(v, state),
+            Expr::Set(v) => ptr_hash(v, state),
+            Expr::Super(v) => v.hash(state),
+            Expr::This(v) => ptr_hash(v, state),
+            Expr::Unary(v) => ptr_hash(v, state),
+            Expr::Variable(v) => ptr_hash(v, state),
         }
     }
 }
@@ -130,7 +171,7 @@ impl Display for Expr {
                 Expr::Literal(e) => format!("{e}"),
                 Expr::Logical(e) => format!("{e}"),
                 Expr::Super(e) => format!("{e}"), // TODO: Verify
-                Expr::This(e) => format!("{e}"), // TODO: Verify
+                Expr::This(e) => format!("{e}"),  // TODO: Verify
                 Expr::Unary(e) => format!("{e}"),
                 Expr::Variable(e) => format!("{e}"),
                 Expr::Get(_e) => todo!("Getexpr"),
@@ -140,7 +181,7 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryExpr {
     pub left: Expr,
     pub operator: Token,
@@ -172,7 +213,7 @@ impl Display for BinaryExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CallExpr {
     pub callee: Expr,
     pub paren: Token,
@@ -203,7 +244,7 @@ impl CallExpr {
 //     }
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConditionalExpr {
     pub condition: Expr,
     pub left: Expr,
@@ -234,7 +275,7 @@ impl Display for ConditionalExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GroupingExpr {
     pub expression: Expr,
 }
@@ -256,24 +297,7 @@ impl Display for GroupingExpr {
     }
 }
 
-// #[derive(Debug)]
-// pub struct LiteralExpr {
-//     value: Literal,
-// }
-
-// impl LiteralExpr {
-//     pub fn new(value: Literal) -> Self {
-//         Self { value }
-//     }
-// }
-
-// impl Display for LiteralExpr {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", self.value)
-//     }
-// }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LogicalExpr {
     pub left: Expr,
     pub operator: Token,
@@ -305,7 +329,7 @@ impl Display for LogicalExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Expr,
@@ -328,7 +352,7 @@ impl Display for UnaryExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariableExpr {
     pub name: Token,
 }
@@ -345,7 +369,7 @@ impl Display for VariableExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssignExpr {
     pub name: Token,
     pub value: Expr,
@@ -363,7 +387,7 @@ impl Display for AssignExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GetExpr {
     pub object: Expr,
     pub name: Token,
@@ -381,7 +405,7 @@ impl Display for GetExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SetExpr {
     pub object: Expr,
     pub name: Token,
@@ -404,7 +428,7 @@ impl Display for SetExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ThisExpr {
     pub keyword: Token,
 }
@@ -421,7 +445,7 @@ impl Display for ThisExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SuperExpr {
     pub keyword: Token,
     pub method: Token,
@@ -456,7 +480,7 @@ fn parenthesize(name: &str, exprs: &[&Expr]) -> String {
             Expr::Literal(l) => format!("{l}"),
             Expr::Logical(e) => parenthesize(&e.operator.lexeme, &[&e.left, &e.right]),
             Expr::Set(e) => parenthesize("Set", &[&e.object, &e.value]), // TODO: Check?
-            Expr::Super(_e) => parenthesize("Super", &[]), // TODO: Fix
+            Expr::Super(_e) => parenthesize("Super", &[]),               // TODO: Fix
             Expr::This(e) => format!("{e}"),
             Expr::Unary(e) => parenthesize(&e.operator.lexeme, &[&e.right]),
             Expr::Variable(e) => format!("{e}"),
@@ -575,7 +599,7 @@ mod tests {
 
         assert_eq!(
             expression.to_string(),
-            "(== (! true) (!= \"Hello\" \"World\"))"
+            "(== (! true) (!= Hello World))"
         );
 
         let e = build_e3();

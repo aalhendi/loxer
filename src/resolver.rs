@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     expr::Expr,
     interpreter::Interpreter,
-    lox_result::LoxResult,
+    lox_result::{LoxResult, ParseErrorCause},
     stmt::{FunctionStmt, Stmt},
     token::Token,
 };
@@ -27,7 +27,7 @@ pub struct Resolver<'a> {
     scopes: Vec<HashMap<String, bool>>,
     current_function: FunctionType,
     current_class: ClassType,
-    // TODO: had_error? rather than error out during resolving
+    errors: Vec<ParseErrorCause>,
 }
 
 impl<'a> Resolver<'a> {
@@ -37,203 +37,192 @@ impl<'a> Resolver<'a> {
             scopes: vec![],
             current_function: FunctionType::None,
             current_class: ClassType::None,
+            errors: vec![],
         }
     }
 
+    // TODO: Refactor
     pub fn resolve_stmts(&mut self, stmts: &[Stmt]) -> Result<(), LoxResult> {
         for s in stmts {
-            match s {
-                Stmt::Block(s) => {
-                    self.begin_scope();
-                    self.resolve_stmts(&s.statements)?;
-                    self.end_scope();
-                }
-                Stmt::Class(s) => {
-                    let enclosing_class =
-                        std::mem::replace(&mut self.current_class, ClassType::Class);
-                    self.declare(&s.name)?;
-                    self.define(&s.name);
-                    if let Some(superclass) = &s.superclass {
-                        self.current_class = ClassType::Subclass;
+            self.resolve_stmt(s)
+        }
 
-                        if superclass.name.lexeme == s.name.lexeme {
-                            return Err(LoxResult::new_error(
-                                superclass.name.line,
-                                "A class can't inherit from itself.",
-                            ));
-                        }
-                        self.resolve_expr(&Expr::Variable(Box::new(superclass.clone())))?;
-                        self.begin_scope();
-                        self.scopes
-                            .last_mut()
-                            .unwrap()
-                            .insert("super".to_string(), true);
+        if self.errors.is_empty() {
+            Ok(())
+        } else {
+            let errors = std::mem::take(&mut self.errors);
+            Err(LoxResult::ParseError { causes: errors })
+        }
+    }
+
+    fn resolve_stmt(&mut self, s: &Stmt) {
+        match s {
+            Stmt::Block(s) => {
+                self.begin_scope();
+                for s in s.statements.iter() {
+                    self.resolve_stmt(s)
+                }
+                self.end_scope();
+            }
+            Stmt::Class(s) => {
+                let enclosing_class = std::mem::replace(&mut self.current_class, ClassType::Class);
+                self.declare(&s.name);
+                self.define(&s.name);
+                if let Some(superclass) = &s.superclass {
+                    self.current_class = ClassType::Subclass;
+
+                    if superclass.name.lexeme == s.name.lexeme {
+                        self.error(&s.name, "A class can't inherit from itself.");
                     }
+                    self.resolve_expr(&Expr::Variable(Box::new(superclass.clone())));
                     self.begin_scope();
                     self.scopes
                         .last_mut()
                         .unwrap()
-                        .insert("this".to_string(), true);
-                    for method in &s.methods {
-                        match method {
-                            Stmt::Function(f) => {
-                                let declaration = if f.name.lexeme.eq("init") {
-                                    FunctionType::Initializer
-                                } else {
-                                    FunctionType::Method
-                                };
-                                self.resolve_function(f, declaration)?
-                            }
-                            _ => todo!(),
+                        .insert("super".to_string(), true);
+                }
+                self.begin_scope();
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .insert("this".to_string(), true);
+                for method in &s.methods {
+                    match method {
+                        Stmt::Function(f) => {
+                            let declaration = if f.name.lexeme.eq("init") {
+                                FunctionType::Initializer
+                            } else {
+                                FunctionType::Method
+                            };
+                            self.resolve_function(f, declaration);
                         }
+                        _ => todo!(),
                     }
+                }
+                self.end_scope();
+                if s.superclass.is_some() {
                     self.end_scope();
-                    if s.superclass.is_some() {
-                        self.end_scope();
+                }
+                self.current_class = enclosing_class;
+            }
+            Stmt::Expression(s) => self.resolve_expr(&s.expression),
+            Stmt::Function(s) => {
+                self.declare(&s.name);
+                self.define(&s.name);
+                self.resolve_function(s, FunctionType::Function);
+            }
+            Stmt::If(s) => {
+                self.resolve_expr(&s.condition);
+                self.resolve_stmt(&s.then_branch);
+                if let Some(else_branch) = s.else_branch.clone() {
+                    self.resolve_stmt(&else_branch);
+                }
+            }
+            Stmt::Print(s) => self.resolve_expr(&s.expression),
+            Stmt::Return(s) => {
+                if matches!(self.current_function, FunctionType::None) {
+                    self.error(&s.keyword, "Can't return from top-level code.");
+                }
+                if let Some(v) = &s.value {
+                    if matches!(self.current_function, FunctionType::Initializer) {
+                        self.error(&s.keyword, "Can't return a value from an initializer.");
                     }
-                    self.current_class = enclosing_class;
+                    self.resolve_expr(v);
                 }
-                Stmt::Expression(s) => self.resolve_expr(&s.expression)?,
-                Stmt::Function(s) => {
-                    self.declare(&s.name)?;
-                    self.define(&s.name);
-                    self.resolve_function(s, FunctionType::Function)?;
+            }
+            Stmt::Var(s) => {
+                self.declare(&s.name);
+                if let Some(i) = s.initializer.as_ref() {
+                    self.resolve_expr(i);
                 }
-                Stmt::If(s) => {
-                    self.resolve_expr(&s.condition)?;
-                    self.resolve_stmts(&[s.then_branch.clone()])?;
-                    if let Some(else_branch) = s.else_branch.clone() {
-                        self.resolve_stmts(&[else_branch])?;
-                    }
-                }
-                Stmt::Print(s) => self.resolve_expr(&s.expression)?,
-                Stmt::Return(s) => {
-                    if matches!(self.current_function, FunctionType::None) {
-                        return Err(LoxResult::new_error(
-                            s.keyword.line,
-                            "Cannot return from top-level code",
-                        ));
-                    }
-                    if let Some(v) = &s.value {
-                        if matches!(self.current_function, FunctionType::Initializer) {
-                            return Err(LoxResult::new_error(
-                                s.keyword.line,
-                                "Can't return a value from an initializer.",
-                            ));
-                        }
-                        self.resolve_expr(v)?;
-                    }
-                }
-                Stmt::Var(s) => {
-                    self.declare(&s.name)?;
-                    if let Some(i) = s.initializer.clone() {
-                        self.resolve_expr(&i)?;
-                    }
-                    self.define(&s.name);
-                }
-                Stmt::While(s) => {
-                    self.resolve_expr(&s.condition)?;
-                    self.resolve_stmts(&[s.body.clone()])?;
-                }
+                self.define(&s.name);
+            }
+            Stmt::While(s) => {
+                self.resolve_expr(&s.condition);
+                self.resolve_stmt(&s.body);
             }
         }
-        Ok(())
     }
 
-    fn resolve_expr(&mut self, expr: &Expr) -> Result<(), LoxResult> {
+    fn resolve_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Assign(e) => {
-                self.resolve_expr(&e.value)?;
-                self.resolve_local(Expr::Assign(e.clone()), &e.name);
+                self.resolve_expr(&e.value);
+                self.resolve_local(expr, &e.name);
             }
             Expr::Binary(e) => {
-                self.resolve_expr(&e.left)?;
-                self.resolve_expr(&e.right)?;
+                self.resolve_expr(&e.left);
+                self.resolve_expr(&e.right);
             }
             Expr::Call(e) => {
-                self.resolve_expr(&e.callee)?;
+                self.resolve_expr(&e.callee);
                 for arg in e.arguments.iter() {
-                    self.resolve_expr(arg)?;
+                    self.resolve_expr(arg);
                 }
             }
             Expr::Conditional(e) => {
                 // TODO: Verify
-                self.resolve_expr(&e.condition)?;
-                self.resolve_expr(&e.left)?;
-                self.resolve_expr(&e.right)?;
+                self.resolve_expr(&e.condition);
+                self.resolve_expr(&e.left);
+                self.resolve_expr(&e.right);
             }
-            Expr::Grouping(e) => self.resolve_expr(&e.expression)?,
+            Expr::Grouping(e) => self.resolve_expr(&e.expression),
             // Property dispatch is clearly dynamic since it is not processed during static resolution pass
-            Expr::Get(e) => self.resolve_expr(&e.object)?,
+            Expr::Get(e) => self.resolve_expr(&e.object),
             Expr::Literal(_e) => {}
             Expr::Logical(e) => {
-                self.resolve_expr(&e.left)?;
-                self.resolve_expr(&e.right)?;
+                self.resolve_expr(&e.left);
+                self.resolve_expr(&e.right);
             }
             Expr::Set(e) => {
-                self.resolve_expr(&e.value)?;
-                self.resolve_expr(&e.object)?;
+                self.resolve_expr(&e.value);
+                self.resolve_expr(&e.object);
             }
             Expr::Super(e) => match self.current_class {
                 ClassType::None => {
-                    return Err(LoxResult::new_error(
-                        e.keyword.line,
-                        "Can't use 'super' outside of a class.",
-                    ));
+                    self.error(&e.keyword, "Can't use 'super' outside of a class.");
                 }
                 ClassType::Class => {
-                    return Err(LoxResult::new_error(
-                        e.keyword.line,
+                    self.error(
+                        &e.keyword,
                         "Can't use 'super' in a class with no superclass.",
-                    ));
+                    );
                 }
-                ClassType::Subclass => self.resolve_local(Expr::Super(e.clone()), &e.keyword),
+                ClassType::Subclass => self.resolve_local(expr, &e.keyword),
             },
             Expr::This(e) => {
                 if matches!(self.current_class, ClassType::None) {
-                    return Err(LoxResult::new_error(
-                        e.keyword.line,
-                        "Can't use `this` outside of a class.",
-                    ));
+                    self.error(&e.keyword, "Can't use 'this' outside of a class.");
+                    return;
                 }
-                self.resolve_local(Expr::This(e.clone()), &e.keyword);
+                self.resolve_local(expr, &e.keyword);
             }
-            Expr::Unary(e) => self.resolve_expr(&e.right)?,
+            Expr::Unary(e) => self.resolve_expr(&e.right),
             Expr::Variable(e) => {
                 if let Some(l) = self.scopes.last() {
                     if l.get(&e.name.lexeme) == Some(&false) {
-                        return Err(LoxResult::new_error(
-                            e.name.line,
-                            &format!(
-                                "{} Can't read local variable in its own initializer",
-                                e.name
-                            ),
-                        ));
+                        self.error(&e.name, "Can't read local variable in its own initializer.");
                     }
                 }
-                self.resolve_local(Expr::Variable(e.clone()), &e.name);
+                self.resolve_local(expr, &e.name);
             }
         }
-        Ok(())
     }
 
-    fn resolve_function(
-        &mut self,
-        f: &FunctionStmt,
-        current_function: FunctionType,
-    ) -> Result<(), LoxResult> {
+    fn resolve_function(&mut self, f: &FunctionStmt, current_function: FunctionType) {
         let enclosing_is_in_function =
             std::mem::replace(&mut self.current_function, current_function);
 
         self.begin_scope();
         for p in f.params.iter() {
-            self.declare(p)?;
+            self.declare(p);
             self.define(p);
         }
-        self.resolve_stmts(&f.body)?;
+        for s in f.body.iter() {
+            self.resolve_stmt(s)
+        }
         self.end_scope();
         self.current_function = enclosing_is_in_function;
-        Ok(())
     }
 
     fn begin_scope(&mut self) {
@@ -244,17 +233,15 @@ impl<'a> Resolver<'a> {
         self.scopes.pop();
     }
 
-    fn declare(&mut self, name: &Token) -> Result<(), LoxResult> {
-        if let Some(scope) = self.scopes.last_mut() {
+    fn declare(&mut self, name: &Token) {
+        if let Some(scope) = self.scopes.last() {
             if scope.contains_key(&name.lexeme) {
-                return Err(LoxResult::new_error(
-                    name.line,
-                    "Variable with this name already exists in this scope.",
-                ));
+                self.error(name, "Already a variable with this name in this scope.");
             }
+        }
+        if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.lexeme.clone(), false);
         }
-        Ok(())
     }
 
     fn define(&mut self, name: &Token) {
@@ -263,12 +250,19 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    // TODO: only varexpr?
-    fn resolve_local(&mut self, expr: Expr, name: &Token) {
+    fn resolve_local(&mut self, expr: &Expr, name: &Token) {
         for (idx, scope) in self.scopes.iter().rev().enumerate() {
             if scope.contains_key(&name.lexeme) {
-                self.interpreter.resolve(&expr, idx);
+                self.interpreter.resolve(expr, idx);
             }
         }
+    }
+
+    fn error(&mut self, token: &Token, message: &str) {
+        self.errors.push(ParseErrorCause::new(
+            token.line,
+            Some(token.lexeme.clone()),
+            message,
+        ));
     }
 }

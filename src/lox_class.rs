@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
 
 use crate::{
     expr::{Literal, LoxCallable},
@@ -42,6 +42,20 @@ impl LoxClass {
     }
 }
 
+impl PartialEq for LoxClass {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
+    }
+}
+
+impl Hash for LoxClass {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Classes are defined once and therefore alloc'ed once
+        // any def'n with same name is shadowing
+        (self as *const _ as usize).hash(state)
+    }
+}
+
 impl Display for LoxClass {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
@@ -73,7 +87,7 @@ impl LoxCallable for LoxClass {
     }
 
     fn to_string(&self) -> String {
-        format!("{} instance", self.name)
+        self.name.to_string()
     }
 }
 
@@ -81,6 +95,22 @@ impl LoxCallable for LoxClass {
 pub struct LoxInstance {
     class: LoxClass,
     fields: HashMap<String, Literal>,
+}
+
+impl Hash for LoxInstance {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.class.hash(state);
+        for (k, v) in self.fields.iter() {
+            k.hash(state);
+            v.hash(state);
+        }
+    }
+}
+
+impl PartialEq for LoxInstance {
+    fn eq(&self, other: &Self) -> bool {
+        self.class == other.class && self.fields == other.fields
+    }
 }
 
 impl LoxInstance {
@@ -101,9 +131,9 @@ impl LoxInstance {
                 unreachable!("Non-methods are handled beforehand");
             }
         } else {
-            Err(LoxResult::new_error(
-                name.line,
-                &format!("Undefined property {}.", name.lexeme),
+            Err(LoxResult::runtime_error(
+                name,
+                &format!("Undefined property '{}'.", name.lexeme),
             ))
         }
     }

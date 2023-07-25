@@ -36,30 +36,34 @@ impl LoxCallable for Clock {
 
 #[derive(Debug, Clone)]
 pub struct LoxFunction {
-    pub declaration: FunctionStmt,
+    pub declaration: Rc<FunctionStmt>,
     closure: Rc<RefCell<Environment>>,
     is_initializer: bool,
 }
 
 impl LoxFunction {
     pub fn new(
-        declaration: FunctionStmt,
-        closure: Rc<RefCell<Environment>>,
+        declaration: Rc<FunctionStmt>,
+        closure: &Rc<RefCell<Environment>>,
         is_initializer: bool,
     ) -> Self {
         Self {
             declaration,
-            closure,
+            closure: Rc::clone(closure),
             is_initializer,
         }
     }
 
     pub fn bind_method(&self, instance: &Rc<RefCell<LoxInstance>>) -> LoxFunction {
-        let environment = Environment::wrap(self.closure.clone());
+        let environment = Environment::wrap(Rc::clone(&self.closure));
         environment
             .borrow_mut()
-            .define("this", Literal::Instance(instance.clone()));
-        LoxFunction::new(self.declaration.clone(), environment, self.is_initializer)
+            .define("this", Literal::Instance(Rc::clone(instance)));
+        LoxFunction::new(
+            Rc::clone(&self.declaration),
+            &environment,
+            self.is_initializer,
+        )
     }
 }
 
@@ -72,7 +76,7 @@ impl LoxCallable for LoxFunction {
         arguments: Vec<Literal>,
     ) -> Result<Literal, LoxResult> {
         // Create a new nested environment (scope) for the block. Set enclosing to be the parent scope.
-        let environment = Environment::wrap(self.closure.clone());
+        let environment = Environment::wrap(Rc::clone(&self.closure));
         for (i, p) in self.declaration.params.iter().enumerate() {
             environment
                 .borrow_mut()

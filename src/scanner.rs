@@ -1,10 +1,13 @@
-use super::{LoxResult, Token, TokenType};
+use crate::lox_result::{LoxResult, ParseErrorCause};
+
+use super::{Token, TokenType};
 use std::{collections::HashMap, iter::Peekable, str::Chars};
 
 pub struct Scanner<'a> {
     source: Peekable<Chars<'a>>,
-    line: u32,
+    line: usize,
     tokens: Vec<Token>,
+    errors: Vec<ParseErrorCause>,
 }
 
 impl Scanner<'_> {
@@ -13,11 +16,29 @@ impl Scanner<'_> {
             source: source.chars().peekable(),
             line: 1,
             tokens: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
-        let keywords: HashMap<&str, TokenType> = HashMap::from([
+    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, LoxResult> {
+        while let Some(ch) = self.source.next() {
+            self.scan_token(ch);
+        }
+
+        self.tokens
+            .push(Token::new(TokenType::Eof, "".to_owned(), self.line));
+
+        if self.errors.is_empty() {
+            Ok(&self.tokens)
+        } else {
+            let errors = std::mem::take(&mut self.errors);
+            Err(LoxResult::ParseError { causes: errors })
+        }
+    }
+
+    fn scan_token(&mut self, ch: char) {
+        // TODO: Once cell this
+        let keywords: HashMap<&'static str, TokenType> = HashMap::from([
             ("and", TokenType::And),
             ("class", TokenType::Class),
             ("else", TokenType::Else),
@@ -36,160 +57,228 @@ impl Scanner<'_> {
             ("while", TokenType::While),
         ]);
 
-        while let Some(ch) = self.source.next() {
-            let mut lexeme = ch.to_string();
-
-            let token_type = match ch {
-                '(' => Ok(Some(TokenType::LeftParen)),
-                ')' => Ok(Some(TokenType::RightParen)),
-                '{' => Ok(Some(TokenType::LeftBrace)),
-                '}' => Ok(Some(TokenType::RightBrace)),
-                ',' => Ok(Some(TokenType::Comma)),
-                '.' => Ok(Some(TokenType::Dot)),
-                '-' => Ok(Some(TokenType::Minus)),
-                '+' => Ok(Some(TokenType::Plus)),
-                // TODO: Colons are discarded, should they err if used without `?`
-                ':' => Ok(Some(TokenType::Colon)),
-                ';' => Ok(Some(TokenType::Semicolon)),
-                '*' => Ok(Some(TokenType::Star)),
-                '?' => Ok(Some(TokenType::QuestionMark)),
-                '!' => {
-                    if let Some(c) = self.source.next_if_eq(&'=') {
-                        lexeme = lexeme + &c.to_string();
-                        Ok(Some(TokenType::BangEqual))
-                    } else {
-                        Ok(Some(TokenType::Bang))
-                    }
+        match ch {
+            '(' => self
+                .tokens
+                .push(Token::new(TokenType::LeftParen, ch.to_string(), self.line)),
+            ')' => self
+                .tokens
+                .push(Token::new(TokenType::RightParen, ch.to_string(), self.line)),
+            '{' => self
+                .tokens
+                .push(Token::new(TokenType::LeftBrace, ch.to_string(), self.line)),
+            '}' => self
+                .tokens
+                .push(Token::new(TokenType::RightBrace, ch.to_string(), self.line)),
+            ',' => self
+                .tokens
+                .push(Token::new(TokenType::Comma, ch.to_string(), self.line)),
+            '.' => self
+                .tokens
+                .push(Token::new(TokenType::Dot, ch.to_string(), self.line)),
+            '-' => self
+                .tokens
+                .push(Token::new(TokenType::Minus, ch.to_string(), self.line)),
+            '+' => self
+                .tokens
+                .push(Token::new(TokenType::Plus, ch.to_string(), self.line)),
+            // TODO: Colons are discarded, should they err if used without `?`
+            ':' => self
+                .tokens
+                .push(Token::new(TokenType::Colon, ch.to_string(), self.line)),
+            ';' => self
+                .tokens
+                .push(Token::new(TokenType::Semicolon, ch.to_string(), self.line)),
+            '*' => self
+                .tokens
+                .push(Token::new(TokenType::Star, ch.to_string(), self.line)),
+            '?' => self.tokens.push(Token::new(
+                TokenType::QuestionMark,
+                ch.to_string(),
+                self.line,
+            )),
+            '!' => {
+                if let Some(c) = self.source.next_if_eq(&'=') {
+                    self.tokens.push(Token::new(
+                        TokenType::BangEqual,
+                        String::from_iter([ch, c]),
+                        self.line,
+                    ))
+                } else {
+                    self.tokens
+                        .push(Token::new(TokenType::Bang, ch.to_string(), self.line))
                 }
-                '=' => {
-                    if let Some(c) = self.source.next_if_eq(&'=') {
-                        lexeme = lexeme + &c.to_string();
-                        Ok(Some(TokenType::EqualEqual))
-                    } else {
-                        Ok(Some(TokenType::Equal))
-                    }
-                }
-                '<' => {
-                    if let Some(c) = self.source.next_if_eq(&'=') {
-                        lexeme = lexeme + &c.to_string();
-                        Ok(Some(TokenType::LessEqual))
-                    } else {
-                        Ok(Some(TokenType::Less))
-                    }
-                }
-                '>' => {
-                    if let Some(c) = self.source.next_if_eq(&'=') {
-                        lexeme = lexeme + &c.to_string();
-                        Ok(Some(TokenType::GreaterEqual))
-                    } else {
-                        Ok(Some(TokenType::Greater))
-                    }
-                }
-                '/' => {
-                    // Comment. ignore lexeme
-                    if self.source.next_if_eq(&'/').is_some() {
-                        for next_ch in self.source.by_ref() {
-                            // Consume till newline
-                            if next_ch == '\n' {
-                                break;
-                            }
-                        }
-                        Ok(None)
-                    } else if self.source.next_if_eq(&'*').is_some() {
-                        // Block comment. ignore lexeme
-                        match self.scan_block_comment() {
-                            Ok(_) => Ok(None),
-                            Err(e) => Err(e),
-                        }
-                    } else {
-                        Ok(Some(TokenType::Slash))
-                    }
-                }
-                ' ' | '\r' | '\t' => {
-                    Ok(None) // Skip whitespace
-                }
-                '\n' => {
-                    self.line += 1;
-                    Ok(None)
-                }
-                '"' => {
-                    // TODO: Handle escape sequences
-                    lexeme = String::new(); // reset text to trim first quote
-                    let mut return_val =
-                        Err(LoxResult::new_error(self.line, "Unterminated string."));
-                    for next_ch in self.source.by_ref() {
-                        if next_ch == '"' {
-                            return_val = Ok(Some(TokenType::String(lexeme.clone())));
-                            break;
-                        } else {
-                            if next_ch == '\n' {
-                                self.line += 1;
-                            }
-                            lexeme += &next_ch.to_string();
-                        }
-                    }
-                    return_val
-                }
-                _ if ch.is_ascii_digit() => {
-                    while let Some(next_ch) =
-                        self.source.next_if(|next_ch| next_ch.is_ascii_digit())
-                    {
-                        // Keep consuming while next is number
-                        lexeme += &next_ch.to_string();
-                    }
-
-                    // No longer a number char
-                    // Check if next is dot (for decimals)
-                    if let Some(next_ch) = self.source.next_if(|c| *c == '.') {
-                        // Append dot
-                        lexeme += &next_ch.to_string();
-
-                        while let Some(next_ch) =
-                            self.source.next_if(|next_ch| next_ch.is_ascii_digit())
-                        {
-                            // Keep consuming while next is number
-                            lexeme += &next_ch.to_string();
-                        }
-                    }
-
-                    // TODO: unwrap
-                    Ok(Some(TokenType::Number(lexeme.parse().unwrap())))
-                }
-                _ if ch.is_ascii_alphabetic() => {
-                    while let Some(next_ch) = self.source.next_if(|ch| ch.is_ascii_alphanumeric()) {
-                        lexeme += &next_ch.to_string();
-                    }
-
-                    let t_type = keywords.get(&lexeme.as_str());
-                    match t_type {
-                        Some(t) => Ok(Some(t.clone())), // NOTE: is this clone needed?
-                        None => Ok(Some(TokenType::Identifier(lexeme.clone()))),
-                    }
-                }
-                _ => Err(LoxResult::new_error(
-                    self.line,
-                    &format!("Unexpected Character \"{ch}\""),
-                )),
-            };
-
-            match token_type {
-                Ok(t_type) => {
-                    if let Some(t) = t_type {
-                        self.tokens
-                            .push(Token::new(t, lexeme.to_owned(), self.line))
-                    }
-                }
-                Err(e) => eprintln!("{e}"),
             }
+            '=' => {
+                if let Some(c) = self.source.next_if_eq(&'=') {
+                    self.tokens.push(Token::new(
+                        TokenType::EqualEqual,
+                        String::from_iter([ch, c]),
+                        self.line,
+                    ))
+                } else {
+                    self.tokens
+                        .push(Token::new(TokenType::Equal, ch.to_string(), self.line))
+                }
+            }
+            '<' => {
+                if let Some(c) = self.source.next_if_eq(&'=') {
+                    self.tokens.push(Token::new(
+                        TokenType::LessEqual,
+                        String::from_iter([ch, c]),
+                        self.line,
+                    ))
+                } else {
+                    self.tokens
+                        .push(Token::new(TokenType::Less, ch.to_string(), self.line))
+                }
+            }
+            '>' => {
+                if let Some(c) = self.source.next_if_eq(&'=') {
+                    self.tokens.push(Token::new(
+                        TokenType::GreaterEqual,
+                        String::from_iter([ch, c]),
+                        self.line,
+                    ))
+                } else {
+                    self.tokens
+                        .push(Token::new(TokenType::Greater, ch.to_string(), self.line))
+                }
+            }
+            '/' => {
+                // Comment. ignore lexeme
+                if self.source.next_if_eq(&'/').is_some() {
+                    for next_ch in self.source.by_ref() {
+                        // Consume till newline
+                        if next_ch == '\n' {
+                            self.line += 1;
+                            break;
+                        }
+                    }
+                } else if self.source.next_if_eq(&'*').is_some() {
+                    // Block comment. ignore lexeme
+                    if self.scan_block_comment().is_err() {
+                        self.errors.push(ParseErrorCause::new(
+                            self.line,
+                            None,
+                            "Unterminated block comment.",
+                        ))
+                    }
+                } else {
+                    self.tokens
+                        .push(Token::new(TokenType::Slash, ch.to_string(), self.line))
+                }
+            }
+            ' ' | '\r' | '\t' => {
+                // Skip whitespace
+            }
+            '\n' => {
+                self.line += 1;
+            }
+            '"' => {
+                // TODO: Handle escape sequences
+                let mut lexeme = Vec::new(); // reset text to trim first quote
+                let mut is_term = false;
+                for next_ch in self.source.by_ref() {
+                    if next_ch == '"' {
+                        is_term = true;
+                        break;
+                    } else if next_ch == '\n' {
+                        self.line += 1;
+                    }
+                    lexeme.push(next_ch);
+                }
+                if is_term {
+                    let lexeme = String::from_iter(lexeme);
+                    // TODO: Does this need to be in 2 places?
+                    self.tokens.push(Token::new(
+                        TokenType::String(lexeme.clone()),
+                        lexeme,
+                        self.line,
+                    ))
+                } else {
+                    self.errors.push(ParseErrorCause::new(
+                        self.line,
+                        None,
+                        "Unterminated string.",
+                    ))
+                }
+            }
+            _ if ch.is_ascii_digit() => {
+                let mut char_num = vec![ch];
+                while let Some(next_ch) = self.source.next_if(|next_ch| next_ch.is_ascii_digit()) {
+                    // Keep consuming while next is number
+                    char_num.push(next_ch);
+                }
+
+                // No longer a number char
+                // Check if next is dot (for decimals)
+                if self.source.peek() == Some(&'.') {
+                    // Append dot and consume
+                    char_num.push('.');
+                    self.source.next();
+
+                    // Peek next
+                    match self.source.peek() {
+                        Some(c) if c.is_ascii_digit() => {
+                            while let Some(next_ch) =
+                                self.source.next_if(|next_ch| next_ch.is_ascii_digit())
+                            {
+                                // Keep consuming while next is number
+                                char_num.push(next_ch);
+                            }
+                        }
+                        _ => {
+                            // Add the number, add the consumed dot as token
+                            self.push_num(&char_num);
+                            return self.tokens.push(Token::new(
+                                TokenType::Dot,
+                                ".".to_string(),
+                                self.line,
+                            ));
+                        }
+                    }
+                }
+                self.push_num(&char_num);
+            }
+
+            // TODO: allow unicode?
+            _ if ch.is_ascii_alphabetic() || ch == '_' => {
+                let mut lexeme = vec![ch]; // TODO: Capacity
+                while let Some(next_ch) = self
+                    .source
+                    .next_if(|ch| ch.is_ascii_alphanumeric() || ch == &'_')
+                {
+                    lexeme.push(next_ch);
+                }
+
+                let lexeme = String::from_iter(lexeme);
+                let t_type = keywords.get(&lexeme.as_str());
+                match t_type {
+                    Some(t) => self.tokens.push(Token::new(t.clone(), lexeme, self.line)),
+                    None => self.tokens.push(Token::new(
+                        TokenType::Identifier(lexeme.clone()),
+                        lexeme,
+                        self.line,
+                    )),
+                }
+            }
+            _ => self.errors.push(ParseErrorCause::new(
+                self.line,
+                None,
+                "Unexpected character.",
+            )),
         }
-
-        self.tokens
-            .push(Token::new(TokenType::Eof, "".to_owned(), self.line));
-
-        &self.tokens
     }
 
-    fn scan_block_comment(&mut self) -> Result<(), LoxResult> {
+    fn push_num(&mut self, char_num: &[char]) {
+        let str_num = String::from_iter(char_num);
+        let value = str_num.parse::<f64>().unwrap();
+        self.tokens
+            .push(Token::new(TokenType::Number(value), str_num, self.line));
+    }
+
+    fn scan_block_comment(&mut self) -> Result<(), ()> {
         // Consume till loop broken or EOF
         while let Some(next_ch) = self.source.next() {
             if next_ch == '\n' {
@@ -208,10 +297,7 @@ impl Scanner<'_> {
                 }
             }
         }
-        Err(LoxResult::new_error(
-            self.line,
-            "Unterminated block comment",
-        ))
+        Err(())
     }
 }
 
@@ -222,6 +308,7 @@ fn test_bool() {
     let mut scanner = Scanner::new(source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
+        .unwrap()
         .iter()
         .map(|t| &t.token_type)
         .collect();
@@ -245,11 +332,12 @@ fn test_number() {
     let mut scanner = Scanner::new(&source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
+        .unwrap()
         .iter()
         .map(|t| &t.token_type)
         .collect();
 
-    assert_eq!(ttypes.len(), 10);
+    assert_eq!(ttypes.len(), 12);
     assert_eq!(
         ttypes,
         vec![
@@ -260,8 +348,10 @@ fn test_number() {
             &TokenType::Number(100.00),
             &TokenType::Identifier("d".to_owned()),
             &TokenType::Number(100.00),
+            &TokenType::Dot,
             &TokenType::Identifier("d".to_owned()),
             &TokenType::Number(100.00),
+            &TokenType::Dot,
             &TokenType::Eof,
         ]
     );
@@ -274,6 +364,7 @@ fn test_comment() {
     let mut scanner = Scanner::new(&source);
     let ttypes: Vec<_> = scanner
         .scan_tokens()
+        .unwrap()
         .iter()
         .map(|t| &t.token_type)
         .collect();

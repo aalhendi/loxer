@@ -1,15 +1,15 @@
-#![allow(dead_code)]
 use crate::{
     expr::{Expr, VariableExpr},
     token::Token,
 };
+use std::rc::Rc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Stmt {
     Block(Box<BlockStmt>),
     Class(Box<ClassStmt>),
     Expression(Box<ExpressionStmt>),
-    Function(Box<FunctionStmt>),
+    Function(Rc<FunctionStmt>),
     If(Box<IfStmt>),
     Print(Box<PrintStmt>),
     Return(Box<ReturnStmt>),
@@ -17,7 +17,7 @@ pub enum Stmt {
     While(Box<WhileStmt>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
 }
@@ -28,7 +28,7 @@ impl BlockStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClassStmt {
     pub name: Token,
     pub superclass: Option<VariableExpr>,
@@ -45,7 +45,7 @@ impl ClassStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExpressionStmt {
     pub expression: Expr,
 }
@@ -56,7 +56,7 @@ impl ExpressionStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionStmt {
     pub name: Token,
     pub params: Vec<Token>,
@@ -64,16 +64,12 @@ pub struct FunctionStmt {
 }
 
 impl FunctionStmt {
-    pub fn new(name: Token, params: &[Token], body: Vec<Stmt>) -> Self {
-        Self {
-            name,
-            params: params.to_vec(),
-            body,
-        }
+    pub fn new(name: Token, params: Vec<Token>, body: Vec<Stmt>) -> Self {
+        Self { name, params, body }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Stmt,
@@ -90,7 +86,7 @@ impl IfStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PrintStmt {
     pub expression: Expr,
 }
@@ -101,7 +97,7 @@ impl PrintStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReturnStmt {
     pub keyword: Token,
     pub value: Option<Expr>,
@@ -113,7 +109,7 @@ impl ReturnStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VarStmt {
     pub name: Token,
     pub initializer: Option<Expr>,
@@ -125,7 +121,7 @@ impl VarStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Stmt,

@@ -1,25 +1,24 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Display, hash::Hash, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
 use crate::{
     expr::{Literal, LoxCallable},
-    functions::LoxFunction,
     interpreter::Interpreter,
     lox_result::LoxResult,
     token::Token,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoxClass {
     pub name: String,
-    pub methods: HashMap<String, LoxFunction>,
-    pub superclass: Option<Box<LoxClass>>,
+    pub methods: HashMap<String, Literal>,
+    pub superclass: Option<Rc<LoxClass>>,
 }
 
 impl LoxClass {
     pub fn new(
         name: &str,
-        superclass: Option<Box<LoxClass>>,
-        methods: HashMap<String, LoxFunction>,
+        superclass: Option<Rc<LoxClass>>,
+        methods: HashMap<String, Literal>,
     ) -> Self {
         Self {
             name: name.to_string(),
@@ -30,7 +29,7 @@ impl LoxClass {
 
     pub fn find_method(&self, name: &str) -> Option<Literal> {
         match self.methods.get(name) {
-            Some(m) => Some(Literal::Function(Rc::new(m.clone()))),
+            Some(m) => Some(m.clone()),
             None => {
                 if let Some(superclass) = &self.superclass {
                     superclass.find_method(name)
@@ -39,20 +38,6 @@ impl LoxClass {
                 }
             }
         }
-    }
-}
-
-impl PartialEq for LoxClass {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
-}
-
-impl Hash for LoxClass {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Classes are defined once and therefore alloc'ed once
-        // any def'n with same name is shadowing
-        (self as *const _ as usize).hash(state)
     }
 }
 
@@ -91,26 +76,10 @@ impl LoxCallable for LoxClass {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoxInstance {
     class: LoxClass,
     fields: HashMap<String, Literal>,
-}
-
-impl Hash for LoxInstance {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.class.hash(state);
-        for (k, v) in self.fields.iter() {
-            k.hash(state);
-            v.hash(state);
-        }
-    }
-}
-
-impl PartialEq for LoxInstance {
-    fn eq(&self, other: &Self) -> bool {
-        self.class == other.class && self.fields == other.fields
-    }
 }
 
 impl LoxInstance {

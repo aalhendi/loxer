@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     expr::Expr,
@@ -74,7 +74,7 @@ impl<'a> Resolver<'a> {
                     if superclass.name.lexeme == s.name.lexeme {
                         self.error(&s.name, "A class can't inherit from itself.");
                     }
-                    self.resolve_expr(&Expr::Variable(Box::new(superclass.clone())));
+                    self.resolve_expr(&Expr::Variable(Rc::new(superclass.clone())));
                     self.begin_scope();
                     self.scopes
                         .last_mut()

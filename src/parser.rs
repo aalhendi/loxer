@@ -597,7 +597,7 @@ impl<'a> Parser<'a> {
                 ));
             }
             let right = self.conditional()?;
-            expr = Expr::Conditional(Box::new(ConditionalExpr::new(expr, left, right)))
+            expr = Expr::Conditional(Rc::new(ConditionalExpr::new(expr, left, right)))
         }
         Ok(expr)
     }
@@ -613,10 +613,17 @@ impl<'a> Parser<'a> {
 
                 match expr {
                     Expr::Variable(s) => {
-                        return Ok(Expr::Assign(Box::new(AssignExpr::new(s.name, value))));
+                        return Ok(Expr::Assign(Rc::new(AssignExpr::new(
+                            s.name.clone(),
+                            value,
+                        ))));
                     }
                     Expr::Get(e) => {
-                        return Ok(Expr::Set(Box::new(SetExpr::new(e.object, e.name, value))));
+                        return Ok(Expr::Set(Rc::new(SetExpr::new(
+                            e.object.clone(),
+                            e.name.clone(),
+                            value,
+                        ))));
                     }
                     _ => {}
                 }
@@ -640,7 +647,7 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::Or {
                 let operator = self.tokens.next().unwrap();
                 let right = self.logic_and()?;
-                expr = Expr::Logical(Box::new(LogicalExpr::new(expr, operator.clone(), right)));
+                expr = Expr::Logical(Rc::new(LogicalExpr::new(expr, operator.clone(), right)));
             } else {
                 break;
             }
@@ -655,7 +662,7 @@ impl<'a> Parser<'a> {
             if t.token_type == TokenType::And {
                 let operator = self.tokens.next().unwrap();
                 let right = self.equality()?;
-                expr = Expr::Logical(Box::new(LogicalExpr::new(expr, operator.clone(), right)));
+                expr = Expr::Logical(Rc::new(LogicalExpr::new(expr, operator.clone(), right)));
             } else {
                 break;
             }
@@ -671,7 +678,7 @@ impl<'a> Parser<'a> {
         }) {
             let operator = t;
             let right = self.comparison()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
+            expr = Expr::Binary(Rc::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
     }
@@ -687,7 +694,7 @@ impl<'a> Parser<'a> {
         }) {
             let operator = t;
             let right = self.term()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
+            expr = Expr::Binary(Rc::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
 
         Ok(expr)
@@ -702,7 +709,7 @@ impl<'a> Parser<'a> {
         {
             let operator = t;
             let right = self.factor()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
+            expr = Expr::Binary(Rc::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
     }
@@ -716,7 +723,7 @@ impl<'a> Parser<'a> {
         {
             let operator = t;
             let right = self.unary()?;
-            expr = Expr::Binary(Box::new(BinaryExpr::new(expr, operator.to_owned(), right)));
+            expr = Expr::Binary(Rc::new(BinaryExpr::new(expr, operator.to_owned(), right)));
         }
         Ok(expr)
     }
@@ -728,7 +735,7 @@ impl<'a> Parser<'a> {
         {
             let operator = t;
             let right = self.unary()?;
-            let e = Expr::Unary(Box::new(UnaryExpr::new(operator.clone(), right)));
+            let e = Expr::Unary(Rc::new(UnaryExpr::new(operator.clone(), right)));
             return Ok(e);
         }
         self.call()
@@ -748,7 +755,7 @@ impl<'a> Parser<'a> {
                 let t = self.tokens.peek().unwrap();
                 if let TokenType::Identifier(_) = &t.token_type {
                     let name = self.tokens.next().unwrap();
-                    expr = Expr::Get(Box::new(GetExpr::new(name.clone(), expr)));
+                    expr = Expr::Get(Rc::new(GetExpr::new(name.clone(), expr)));
                 } else {
                     return Err(ParseErrorCause::new(
                         t.line,
@@ -798,7 +805,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(Expr::Call(Box::new(CallExpr::new(
+        Ok(Expr::Call(Rc::new(CallExpr::new(
             callee,
             paren.clone(),
             arguments,
@@ -814,7 +821,7 @@ impl<'a> Parser<'a> {
             TokenType::Nil => Ok(Expr::Literal(Literal::Nil)),
             TokenType::String(s) => Ok(Expr::Literal(Literal::String(s.to_string()))),
             TokenType::Number(n) => Ok(Expr::Literal(Literal::Number(*n))),
-            TokenType::This => Ok(Expr::This(Box::new(ThisExpr::new(t.clone())))),
+            TokenType::This => Ok(Expr::This(Rc::new(ThisExpr::new(t.clone())))),
             TokenType::Super => {
                 let keyword = t;
                 let t = self.tokens.peek().unwrap();
@@ -841,7 +848,7 @@ impl<'a> Parser<'a> {
                     }
                 };
 
-                Ok(Expr::Super(Box::new(SuperExpr::new(
+                Ok(Expr::Super(Rc::new(SuperExpr::new(
                     keyword.clone(),
                     method.clone(),
                 ))))
@@ -858,9 +865,9 @@ impl<'a> Parser<'a> {
                         "Expect ')' after expression",
                     ));
                 }
-                Ok(Expr::Grouping(Box::new(GroupingExpr::new(expr))))
+                Ok(Expr::Grouping(Rc::new(GroupingExpr::new(expr))))
             }
-            TokenType::Identifier(_) => Ok(Expr::Variable(Box::new(VariableExpr::new(t.clone())))),
+            TokenType::Identifier(_) => Ok(Expr::Variable(Rc::new(VariableExpr::new(t.clone())))),
             _ => Err(ParseErrorCause::new(
                 t.line,
                 Some(t.lexeme.clone()),

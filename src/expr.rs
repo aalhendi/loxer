@@ -1,48 +1,38 @@
-use crate::functions::LoxFunction;
+use crate::functions::{LoxFunction, LoxNative};
 use crate::lox_class::{LoxClass, LoxInstance};
 use crate::{interpreter::Interpreter, lox_result::LoxResult, token::Token};
-use std::any::TypeId;
 use std::cell::RefCell;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::Hash;
 use std::rc::Rc;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Literal {
-    #[allow(unused)]
-    Identifier(String),
     Boolean(bool),
     Nil,
     String(String),
     Number(f64),
     Function(Rc<LoxFunction>),
-    // TODO: Is typeId needed?
-    NativeFunction(TypeId, Rc<dyn LoxCallable>),
-    Class(LoxClass),
+    NativeFunction(LoxNative),
+    Class(Rc<LoxClass>),
     Instance(Rc<RefCell<LoxInstance>>),
 }
 
-impl Literal {
-    pub fn native_function<T: LoxCallable + 'static>(v: T) -> Self {
-        Self::NativeFunction(TypeId::of::<T>(), Rc::new(v))
-    }
-}
-
-impl Hash for Literal {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Literal::Identifier(v) => v.hash(state),
-            Literal::Boolean(v) => v.hash(state),
-            Literal::Nil => 0u8.hash(state),
-            Literal::String(v) => v.hash(state),
-            Literal::Number(v) => if v.is_nan() { f64::NAN } else { *v }.to_bits().hash(state),
-            Literal::Function(v) => ptr_hash(v, state),
-            Literal::NativeFunction(ty, _) => ty.hash(state),
-            Literal::Class(v) => v.hash(state),
-            Literal::Instance(v) => v.borrow().hash(state),
-        }
-    }
-}
+// impl Hash for Literal {
+//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+//         match self {
+//             Literal::Identifier(v) => v.hash(state),
+//             Literal::Boolean(v) => v.hash(state),
+//             Literal::Nil => 0u8.hash(state),
+//             Literal::String(v) => v.hash(state),
+//             Literal::Number(v) => if v.is_nan() { f64::NAN } else { *v }.to_bits().hash(state),
+//             Literal::Function(v) => ptr_hash(v, state),
+//             Literal::NativeFunction(ty, _) => ty.hash(state),
+//             Literal::Class(v) => v.hash(state),
+//             Literal::Instance(v) => v.borrow().hash(state),
+//         }
+//     }
+// }
 
 // TODO: Verify
 impl Eq for Literal {
@@ -52,12 +42,11 @@ impl Eq for Literal {
 impl core::fmt::Debug for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Identifier(arg0) => f.debug_tuple("Identifier").field(arg0).finish(),
             Self::Boolean(arg0) => f.debug_tuple("Boolean").field(arg0).finish(),
             Self::Nil => write!(f, "nil"),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
-            Self::NativeFunction(_, arg0) => f
+            Self::NativeFunction(arg0) => f
                 .debug_tuple("NativeFunction")
                 .field(&arg0.to_string())
                 .finish(),
@@ -71,38 +60,36 @@ impl core::fmt::Debug for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let v = match self {
-            Literal::Identifier(i) => i.to_owned(),
             Literal::Boolean(b) => b.to_string(),
             Literal::Nil => String::from("nil"),
-            Literal::NativeFunction(_, f) => f.to_string(),
+            Literal::NativeFunction(f) => f.to_string(),
             Literal::String(s) => s.to_string(),
             Literal::Number(n) => n.to_string(),
             Literal::Function(f) => f.to_string(),
-            Literal::Class(c) => LoxCallable::to_string(c),
+            Literal::Class(c) => c.to_string(),
             Literal::Instance(i) => i.borrow().to_string(),
         };
         write!(f, "{v}")
     }
 }
 
-impl PartialEq for Literal {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Identifier(l0), Self::Identifier(r0)) => l0 == r0,
-            (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
-            (Self::String(l0), Self::String(r0)) => l0 == r0,
-            (Self::Number(l0), Self::Number(r0)) => l0 == r0,
-            (Self::Function(l0), Self::Function(r0)) => std::ptr::eq(l0.as_ref(), r0.as_ref()),
-            (Self::Nil, Self::Nil) => true,
-            (Self::NativeFunction(ty0, _), Self::NativeFunction(ty1, _)) => ty0 == ty1,
-            (Self::Class(l0), Self::Class(r0)) => l0.name == r0.name,
-            (Self::Instance(l0), Self::Instance(r0)) => l0 == r0,
-            _ => false,
-        }
-    }
-}
+// impl PartialEq for Literal {
+//     fn eq(&self, other: &Self) -> bool {
+//         match (self, other) {
+//             (Self::Identifier(l0), Self::Identifier(r0)) => l0 == r0,
+//             (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
+//             (Self::String(l0), Self::String(r0)) => l0 == r0,
+//             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
+//             (Self::Function(l0), Self::Function(r0)) => std::ptr::eq(l0.as_ref(), r0.as_ref()),
+//             (Self::Nil, Self::Nil) => true,
+//             (Self::NativeFunction(ty0, _), Self::NativeFunction(ty1, _)) => ty0 == ty1,
+//             (Self::Class(l0), Self::Class(r0)) => l0.name == r0.name,
+//             (Self::Instance(l0), Self::Instance(r0)) => l0 == r0,
+//             _ => false,
+//         }
+//     }
+// }
 
-// TODO: Static lifetime for function thing?
 pub trait LoxCallable {
     fn call(
         &self,
@@ -115,19 +102,19 @@ pub trait LoxCallable {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    Assign(Box<AssignExpr>),
-    Binary(Box<BinaryExpr>),
-    Call(Box<CallExpr>),
-    Conditional(Box<ConditionalExpr>), // Ternary
-    Get(Box<GetExpr>),
-    Grouping(Box<GroupingExpr>),
+    Assign(Rc<AssignExpr>),
+    Binary(Rc<BinaryExpr>),
+    Call(Rc<CallExpr>),
+    Conditional(Rc<ConditionalExpr>), // Ternary
+    Get(Rc<GetExpr>),
+    Grouping(Rc<GroupingExpr>),
     Literal(Literal),
-    Logical(Box<LogicalExpr>),
-    Set(Box<SetExpr>),
-    Super(Box<SuperExpr>),
-    This(Box<ThisExpr>),
-    Unary(Box<UnaryExpr>),
-    Variable(Box<VariableExpr>),
+    Logical(Rc<LogicalExpr>),
+    Set(Rc<SetExpr>),
+    Super(Rc<SuperExpr>),
+    This(Rc<ThisExpr>),
+    Unary(Rc<UnaryExpr>),
+    Variable(Rc<VariableExpr>),
 }
 
 fn ptr_hash<T: Debug, H: std::hash::Hasher>(v: &T, state: &mut H) {
@@ -145,7 +132,7 @@ impl Hash for Expr {
             Expr::Conditional(v) => ptr_hash(v, state),
             Expr::Get(v) => ptr_hash(v, state),
             Expr::Grouping(v) => ptr_hash(v, state),
-            Expr::Literal(v) => v.hash(state),
+            Expr::Literal(v) => ptr_hash(v, state),
             Expr::Logical(v) => ptr_hash(v, state),
             Expr::Set(v) => ptr_hash(v, state),
             Expr::Super(v) => v.hash(state),
@@ -526,18 +513,20 @@ fn walk_rpn(name: &str, exprs: &[&Expr]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use crate::{
         expr::{BinaryExpr, ConditionalExpr, Expr, GroupingExpr, Literal, UnaryExpr},
         token::{Token, TokenType},
     };
 
     fn build_e1() -> BinaryExpr {
-        let left = Expr::Binary(Box::new(BinaryExpr::new(
+        let left = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(1.0)),
             Token::new(TokenType::Plus, "+".to_owned(), 1),
             Expr::Literal(Literal::Number(2.0)),
         )));
-        let right = Expr::Binary(Box::new(BinaryExpr::new(
+        let right = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(4.0)),
             Token::new(TokenType::Minus, "-".to_owned(), 1),
             Expr::Literal(Literal::Number(3.0)),
@@ -547,11 +536,11 @@ mod tests {
     }
 
     fn build_e2() -> BinaryExpr {
-        let left = Expr::Unary(Box::new(UnaryExpr::new(
+        let left = Expr::Unary(Rc::new(UnaryExpr::new(
             Token::new(TokenType::Minus, "-".to_owned(), 1),
             Expr::Literal(Literal::Number(123.0)),
         )));
-        let right = Expr::Grouping(Box::new(GroupingExpr::new(Expr::Literal(Literal::Number(
+        let right = Expr::Grouping(Rc::new(GroupingExpr::new(Expr::Literal(Literal::Number(
             45.76,
         )))));
 
@@ -559,17 +548,17 @@ mod tests {
     }
 
     fn build_e3() -> ConditionalExpr {
-        let condition = Expr::Binary(Box::new(BinaryExpr::new(
+        let condition = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(5.0)),
             Token::new(TokenType::Greater, ">".to_owned(), 1),
             Expr::Literal(Literal::Number(6.0)),
         )));
-        let left = Expr::Binary(Box::new(BinaryExpr::new(
+        let left = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(1.0)),
             Token::new(TokenType::Plus, "+".to_owned(), 1),
             Expr::Literal(Literal::Number(2.0)),
         )));
-        let right = Expr::Binary(Box::new(BinaryExpr::new(
+        let right = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(4.0)),
             Token::new(TokenType::Minus, "-".to_owned(), 1),
             Expr::Literal(Literal::Number(3.0)),
@@ -582,11 +571,11 @@ mod tests {
         let e = build_e2();
         assert_eq!(e.to_string(), "(* (- 123) (group 45.76))");
 
-        let left = Expr::Unary(Box::new(UnaryExpr::new(
+        let left = Expr::Unary(Rc::new(UnaryExpr::new(
             Token::new(TokenType::Bang, "!".to_owned(), 1),
             Expr::Literal(Literal::Boolean(true)),
         )));
-        let right = Expr::Binary(Box::new(BinaryExpr::new(
+        let right = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::String("Hello".to_owned())),
             Token::new(TokenType::BangEqual, "!=".to_owned(), 1),
             Expr::Literal(Literal::String("World".to_owned())),
@@ -597,10 +586,7 @@ mod tests {
             right,
         );
 
-        assert_eq!(
-            expression.to_string(),
-            "(== (! true) (!= Hello World))"
-        );
+        assert_eq!(expression.to_string(), "(== (! true) (!= Hello World))");
 
         let e = build_e3();
         assert_eq!(e.to_string(), "(?: (> 5 6) (+ 1 2) (- 4 3))");

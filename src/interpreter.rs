@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::{
     environment::Environment,
     expr::{Expr, Literal, LoxCallable},
-    functions::{Clock, LoxFunction},
+    functions::{Clock, LoxFunction, LoxNative},
     lox_class::LoxClass,
     lox_result::LoxResult,
     stmt::Stmt,
@@ -19,7 +19,7 @@ impl Interpreter {
     pub fn new() -> Self {
         let mut environment = Environment::new(None);
 
-        let clock = Literal::native_function(Clock);
+        let clock = Literal::NativeFunction(LoxNative(Rc::new(Clock) as Rc<dyn LoxCallable>));
         environment.define("clock", clock);
 
         Self {
@@ -42,9 +42,9 @@ impl Interpreter {
             }
             Stmt::Class(s) => {
                 let superclass = if let Some(superclass) = &s.superclass {
-                    let sc = self.evaluate(&Expr::Variable(Box::new(superclass.clone())))?;
+                    let sc = self.evaluate(&Expr::Variable(Rc::new(superclass.clone())))?;
                     match sc {
-                        Literal::Class(c) => Some(Box::new(c)),
+                        Literal::Class(c) => Some(c),
                         _ => {
                             return Err(LoxResult::runtime_error(
                                 &superclass.name,
@@ -64,18 +64,18 @@ impl Interpreter {
                     self.environment = Environment::wrap(self.environment.clone());
                     self.environment
                         .borrow_mut()
-                        .define("super", Literal::Class(*superclass.clone()))
+                        .define("super", Literal::Class(superclass.clone()))
                 }
 
                 let mut methods = HashMap::new();
                 for method in &s.methods {
                     match method {
                         Stmt::Function(f) => {
-                            let function = LoxFunction::new(
+                            let function = Literal::Function(Rc::new(LoxFunction::new(
                                 Rc::clone(f),
                                 &self.environment,
                                 f.name.lexeme.eq("init"),
-                            );
+                            )));
                             methods.insert(f.name.lexeme.clone(), function);
                         }
                         _ => unreachable!("I think"), // TODO: Validate
@@ -89,7 +89,7 @@ impl Interpreter {
                 let class = LoxClass::new(&s.name.lexeme, superclass, methods);
                 self.environment
                     .borrow_mut()
-                    .assign(&s.name, Literal::Class(class))?;
+                    .assign(&s.name, Literal::Class(Rc::new(class)))?;
             }
             Stmt::Expression(s) => {
                 self.evaluate(&s.expression)?;
@@ -222,8 +222,7 @@ impl Interpreter {
                 }
 
                 match callee {
-                    Literal::Identifier(_)
-                    | Literal::Boolean(_)
+                    Literal::Boolean(_)
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Instance(_)
@@ -245,23 +244,21 @@ impl Interpreter {
 
                         function.call(self, arguments)
                     }
-                    Literal::NativeFunction(_, function) => {
-                        if arguments.len() != function.get_arity() {
+                    Literal::NativeFunction(function) => {
+                        if arguments.len() != function.0.get_arity() {
                             return Err(LoxResult::runtime_error(
                                 &e.paren,
                                 &format!(
                                     "Expected {} arguments but got {}.",
-                                    function.get_arity(),
+                                    function.0.get_arity(),
                                     arguments.len()
                                 ),
                             ));
                         }
 
-                        function.call(self, arguments)
+                        function.0.call(self, arguments)
                     }
                     Literal::Class(class) => {
-                        // TODO: Is this the way to go or is there a cleaner implementation?
-                        let class = &class as &dyn LoxCallable;
                         if arguments.len() != class.get_arity() {
                             return Err(LoxResult::runtime_error(
                                 &e.paren,
@@ -331,12 +328,11 @@ impl Interpreter {
             Expr::Get(e) => {
                 let object = self.evaluate(&e.object)?;
                 match object {
-                    Literal::Identifier(_)
-                    | Literal::Boolean(_)
+                    Literal::Boolean(_)
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
-                    | Literal::NativeFunction(_, _)
+                    | Literal::NativeFunction(_)
                     | Literal::Function(_)
                     | Literal::Class(_) => Err(LoxResult::runtime_error(
                         &e.name,
@@ -348,12 +344,11 @@ impl Interpreter {
             Expr::Set(e) => {
                 let object = self.evaluate(&e.object)?;
                 match object {
-                    Literal::Identifier(_)
-                    | Literal::Boolean(_)
+                    Literal::Boolean(_)
                     | Literal::Nil
                     | Literal::String(_)
                     | Literal::Number(_)
-                    | Literal::NativeFunction(_, _)
+                    | Literal::NativeFunction(_)
                     | Literal::Function(_)
                     | Literal::Class(_) => Err(LoxResult::runtime_error(
                         &e.name,
@@ -427,12 +422,11 @@ impl Interpreter {
         match e {
             Literal::Boolean(b) => *b,
             Literal::Nil => false,
-            Literal::Identifier(_)
-            | Literal::String(_)
+            Literal::String(_)
             | Literal::Number(_)
             | Literal::Class(_)
             | Literal::Instance(_)
-            | Literal::NativeFunction(_, _)
+            | Literal::NativeFunction(_)
             | Literal::Function(_) => true,
         }
     }
@@ -450,6 +444,8 @@ impl Interpreter {
 #[cfg(test)]
 
 mod tests {
+    use std::rc::Rc;
+
     use crate::{
         expr::{BinaryExpr, Expr, Literal},
         token::{Token, TokenType},
@@ -461,7 +457,7 @@ mod tests {
     fn test_multiplication() {
         let left = Expr::Literal(Literal::Number(2.0));
         let right = Expr::Literal(Literal::Number(8.0));
-        let e = Expr::Binary(Box::new(BinaryExpr::new(
+        let e = Expr::Binary(Rc::new(BinaryExpr::new(
             left,
             Token::new(TokenType::Star, "*".to_owned(), 1),
             right,
@@ -477,17 +473,17 @@ mod tests {
 
     #[test]
     fn test_precedence() {
-        let left = Expr::Binary(Box::new(BinaryExpr::new(
+        let left = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(1.0)),
             Token::new(TokenType::Plus, "+".to_owned(), 1),
             Expr::Literal(Literal::Number(2.0)),
         )));
-        let right = Expr::Binary(Box::new(BinaryExpr::new(
+        let right = Expr::Binary(Rc::new(BinaryExpr::new(
             Expr::Literal(Literal::Number(4.0)),
             Token::new(TokenType::Minus, "-".to_owned(), 1),
             Expr::Literal(Literal::Number(5.0)),
         )));
-        let e = Expr::Binary(Box::new(BinaryExpr::new(
+        let e = Expr::Binary(Rc::new(BinaryExpr::new(
             left,
             Token::new(TokenType::Star, "*".to_owned(), 1),
             right,

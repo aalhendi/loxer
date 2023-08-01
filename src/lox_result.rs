@@ -36,7 +36,7 @@ impl Display for LoxResult {
                             write!(f, "[line {}] Error at end: {}", c.line, c.message)?
                         }
                         Some(lexeme) => {
-                            write!(f, "[line {}] Error at '{}': {}", c.line, lexeme, c.message)?
+                            writeln!(f, "[line {}] Error at '{}': {}", c.line, lexeme, c.message)?
                         }
                         None => write!(f, "[line {}] Error: {}", c.line, c.message)?,
                     }

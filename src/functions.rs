@@ -10,6 +10,21 @@ use crate::{
     stmt::FunctionStmt,
 };
 
+#[derive(Clone)]
+pub struct LoxNative(pub Rc<dyn LoxCallable>);
+
+impl PartialEq for LoxNative {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(&self.0, &other.0)
+    }
+}
+
+impl std::fmt::Display for LoxNative {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "<native fn>")
+    }
+}
+
 /// Returns time in seconds from UNIX_EPOCH
 pub struct Clock;
 
@@ -39,6 +54,14 @@ pub struct LoxFunction {
     pub declaration: Rc<FunctionStmt>,
     closure: Rc<RefCell<Environment>>,
     is_initializer: bool,
+}
+
+impl PartialEq for LoxFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.declaration == other.declaration
+            && Rc::ptr_eq(&self.closure, &other.closure)
+            && self.is_initializer == other.is_initializer
+    }
 }
 
 impl LoxFunction {

@@ -17,53 +17,6 @@ pub struct Parser<'a> {
     tokens: std::iter::Peekable<std::slice::Iter<'a, Token>>,
 }
 
-/*
-program        → statement* EOF ;
-classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
-                 "{" function* "}" ;
-function       → IDENTIFIER "(" parameters? ")" block ;
-declaration    → classDecl
-               | funDecl
-               | varDecl
-               | statement ;
-statement      → exprStmt
-               | forStmt
-               | ifStmt
-               | printStmt
-               | returnStmt
-               | whileStmt
-               | block ;
-returnStmt     → "return" expression? ";" ;
-forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
-                 expression? ";"
-                 expression? ")" statement ;
-whileStmt      → "while" "(" expression ")" statement ;
-ifStmt         → "if" "(" expression ")" statement
-               ( "else" statement )? ;
-block          → "{" declaration* "}" ;
-printStmt      → "print" expression ";" ;
-exprStmt       → expression ";" ;
-varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
-funDecl        → "fun" function ;
-expression     → conditional;
-parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
-conditional    → assignment ("?" expression ":" conditional)? ;
-assignment     → ( call "." )? IDENTIFIER "=" assignment
-               | logic_or ;
-logic_or       → logic_and ( "or" logic_and )* ;
-logic_and      → equality ( "and" equality )* ;
-equality       → comparison ( ( "!=" | "==" ) comparison )* ;
-comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-term           → factor ( ( "-" | "+" ) factor )* ;
-factor         → unary ( ( "/" | "*" ) unary )* ;
-unary          → ( "!" | "-" ) unary | call ;
-call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
-arguments      → expression ( "," expression )* ;
-primary        → "true" | "false" | "nil" | "this"
-               | NUMBER | STRING | IDENTIFIER | "(" expression ")"
-               | "super" "." IDENTIFIER ;
- */
-
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [Token]) -> Self {
         Self {
@@ -141,17 +94,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        if let Some(t) = self.tokens.peek() {
-            if let TokenType::LeftBrace = &t.token_type {
-                self.tokens.next();
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect '{' before class body.",
-                ));
-            }
-        }
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
 
         let mut methods = Vec::new();
         while let Some(t) = self.tokens.peek() {
@@ -161,17 +104,7 @@ impl<'a> Parser<'a> {
             methods.push(self.function("method")?);
         }
 
-        if let Some(t) = self.tokens.peek() {
-            if let TokenType::RightBrace = &t.token_type {
-                self.tokens.next();
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect '}' after class body.",
-                ));
-            }
-        }
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
 
         Ok(Stmt::Class(Box::new(ClassStmt::new(
             name.clone(),
@@ -212,16 +145,10 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::Semicolon {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ';' after variable declaration.",
-            ));
-        }
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration.",
+        )?;
 
         Ok(Stmt::Var(Box::new(VarStmt::new(name.clone(), initializer))))
     }
@@ -257,43 +184,16 @@ impl<'a> Parser<'a> {
     }
 
     fn while_statement(&mut self) -> Result<Stmt, ParseErrorCause> {
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::LeftParen {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect '(' after 'while'.",
-            ));
-        }
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.")?;
         let condition = self.expression()?;
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::RightParen {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ')' after condition.",
-            ));
-        }
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
         let body = self.statement()?;
 
         Ok(Stmt::While(Box::new(WhileStmt::new(condition, body))))
     }
 
     fn for_statement(&mut self) -> Result<Stmt, ParseErrorCause> {
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::LeftParen {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect '(' after 'for'.",
-            ));
-        }
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.")?;
 
         let initializer = {
             let t = self.tokens.peek().unwrap();
@@ -318,16 +218,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::Semicolon {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ';' after loop condition.",
-            ));
-        }
+        self.consume(TokenType::Semicolon, "Expect ';' after loop condition.")?;
 
         let increment = {
             let t = self.tokens.peek().unwrap();
@@ -338,16 +229,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::RightParen {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ')' after for clauses.",
-            ));
-        }
+        self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
 
         let mut body = self.statement()?;
 
@@ -372,27 +254,9 @@ impl<'a> Parser<'a> {
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ParseErrorCause> {
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::LeftParen {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect '(' after if.",
-            ));
-        }
+        self.consume(TokenType::LeftParen, "Expect '(' after if.")?;
         let condition = self.expression()?;
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::RightParen {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ')' after if condition.",
-            ));
-        }
+        self.consume(TokenType::RightParen, "Expect ')' after if condition.")?;
         let then_branch = self.statement()?;
         let else_branch = {
             match self.tokens.next_if(|t| t.token_type == TokenType::Else) {
@@ -410,16 +274,7 @@ impl<'a> Parser<'a> {
 
     fn print_statement(&mut self) -> Result<Stmt, ParseErrorCause> {
         let value = self.expression()?;
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::Semicolon {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ';' after expression",
-            ));
-        }
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
         // TODO: Don't think this needs to be boxed
         Ok(Stmt::Print(Box::new(PrintStmt::new(value))))
     }
@@ -435,16 +290,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::Semicolon {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ';' after return value.",
-            ));
-        }
+        self.consume(TokenType::Semicolon, "Expect ';' after return value.")?;
 
         Ok(Stmt::Return(Box::new(ReturnStmt::new(
             keyword.clone(),
@@ -454,16 +300,7 @@ impl<'a> Parser<'a> {
 
     fn expression_statement(&mut self) -> Result<Stmt, ParseErrorCause> {
         let expr = self.expression()?;
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::Semicolon {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ';' after expression.",
-            ));
-        }
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
         Ok(Stmt::Expression(Box::new(ExpressionStmt::new(expr))))
     }
 
@@ -481,16 +318,10 @@ impl<'a> Parser<'a> {
             }
         };
 
-        let t = self.tokens.peek().unwrap();
-        if let TokenType::LeftParen = &t.token_type {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                &format!("Expect '(' after {kind} name."),
-            ));
-        }
+        self.consume(
+            TokenType::LeftParen,
+            &format!("Expect '(' after {kind} name."),
+        )?;
 
         let mut params = Vec::new();
         let t = &(*self.tokens.peek().unwrap()).clone();
@@ -522,28 +353,11 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let t = self.tokens.peek().unwrap();
-        if let TokenType::RightParen = &t.token_type {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect ')' after parameters.",
-            ));
-        }
-
-        let t = self.tokens.peek().unwrap();
-        if let TokenType::LeftBrace = &t.token_type {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                &format!("Expect '{{' before {kind} body."),
-            ));
-        }
-
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+        self.consume(
+            TokenType::LeftBrace,
+            &format!("Expect '{{' before {kind} body."),
+        )?;
         let body = self.block()?;
 
         Ok(Stmt::Function(Rc::new(FunctionStmt::new(
@@ -561,16 +375,7 @@ impl<'a> Parser<'a> {
                 _ => statements.push(self.declaration()?),
             }
         }
-        let t = self.tokens.peek().unwrap();
-        if t.token_type == TokenType::RightBrace {
-            self.tokens.next();
-        } else {
-            return Err(ParseErrorCause::new(
-                t.line,
-                Some(t.lexeme.clone()),
-                "Expect '}' after block.",
-            ));
-        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block")?;
         Ok(statements)
     }
 
@@ -586,16 +391,7 @@ impl<'a> Parser<'a> {
             .next_if(|t| t.token_type == TokenType::QuestionMark)
         {
             let left = self.expression()?;
-            let t = self.tokens.peek().unwrap();
-            if t.token_type == TokenType::Colon {
-                self.tokens.next();
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect ':' after truthy expression",
-                ));
-            }
+            self.consume(TokenType::Colon, "Expect ':' after truthy expression")?;
             let right = self.conditional()?;
             expr = Expr::Conditional(Rc::new(ConditionalExpr::new(expr, left, right)))
         }
@@ -642,15 +438,10 @@ impl<'a> Parser<'a> {
     fn logic_or(&mut self) -> Result<Expr, ParseErrorCause> {
         let mut expr = self.logic_and()?;
 
-        // TODO: Next if
-        while let Some(t) = self.tokens.peek() {
-            if t.token_type == TokenType::Or {
-                let operator = self.tokens.next().unwrap();
-                let right = self.logic_and()?;
-                expr = Expr::Logical(Rc::new(LogicalExpr::new(expr, operator.clone(), right)));
-            } else {
-                break;
-            }
+        while let Some(t) = self.tokens.next_if(|t| t.token_type == TokenType::Or) {
+            let operator = t;
+            let right = self.logic_and()?;
+            expr = Expr::Logical(Rc::new(LogicalExpr::new(expr, operator.clone(), right)));
         }
         Ok(expr)
     }
@@ -658,14 +449,10 @@ impl<'a> Parser<'a> {
     fn logic_and(&mut self) -> Result<Expr, ParseErrorCause> {
         let mut expr = self.equality()?;
 
-        while let Some(t) = self.tokens.peek() {
-            if t.token_type == TokenType::And {
-                let operator = self.tokens.next().unwrap();
-                let right = self.equality()?;
-                expr = Expr::Logical(Rc::new(LogicalExpr::new(expr, operator.clone(), right)));
-            } else {
-                break;
-            }
+        while let Some(t) = self.tokens.next_if(|t| t.token_type == TokenType::And) {
+            let operator = t;
+            let right = self.equality()?;
+            expr = Expr::Logical(Rc::new(LogicalExpr::new(expr, operator.clone(), right)));
         }
         Ok(expr)
     }
@@ -792,18 +579,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let paren = {
-            let t = self.tokens.peek().unwrap();
-            if t.token_type == TokenType::RightParen {
-                self.tokens.next().unwrap()
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect ')' after arguments.",
-                ));
-            }
-        };
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
 
         Ok(Expr::Call(Rc::new(CallExpr::new(
             callee,
@@ -824,17 +600,7 @@ impl<'a> Parser<'a> {
             TokenType::This => Ok(Expr::This(Rc::new(ThisExpr::new(t.clone())))),
             TokenType::Super => {
                 let keyword = t;
-                let t = self.tokens.peek().unwrap();
-                if t.token_type == TokenType::Dot {
-                    self.tokens.next();
-                } else {
-                    return Err(ParseErrorCause::new(
-                        t.line,
-                        Some(t.lexeme.clone()),
-                        "Expect '.' after 'super'.",
-                    ));
-                }
-
+                self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
                 let method = {
                     let t = self.tokens.peek().unwrap();
                     if let TokenType::Identifier(_) = &t.token_type {
@@ -855,16 +621,7 @@ impl<'a> Parser<'a> {
             }
             TokenType::LeftParen => {
                 let expr = self.expression()?;
-                let t = self.tokens.peek().unwrap();
-                if t.token_type == TokenType::RightParen {
-                    self.tokens.next();
-                } else {
-                    return Err(ParseErrorCause::new(
-                        t.line,
-                        Some(t.lexeme.clone()),
-                        "Expect ')' after expression",
-                    ));
-                }
+                self.consume(TokenType::RightParen, "Expect ')' after expression")?;
                 Ok(Expr::Grouping(Rc::new(GroupingExpr::new(expr))))
             }
             TokenType::Identifier(_) => Ok(Expr::Variable(Rc::new(VariableExpr::new(t.clone())))),
@@ -894,6 +651,19 @@ impl<'a> Parser<'a> {
             }
 
             self.tokens.next();
+        }
+    }
+
+    fn consume(&mut self, ttype: TokenType, message: &str) -> Result<&Token, ParseErrorCause> {
+        let t = self.tokens.peek().unwrap();
+        if t.token_type == ttype {
+            Ok(self.tokens.next().unwrap())
+        } else {
+            Err(ParseErrorCause::new(
+                t.line,
+                Some(t.lexeme.clone()),
+                message,
+            ))
         }
     }
 }

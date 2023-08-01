@@ -62,34 +62,14 @@ impl<'a> Parser<'a> {
     }
 
     fn class_declaration(&mut self) -> Result<Stmt, ParseErrorCause> {
-        let name = {
-            let t = self.tokens.peek().unwrap();
-            if let TokenType::Identifier(_) = &t.token_type {
-                self.tokens.next().unwrap()
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect class name.",
-                ));
-            }
-        };
-
+        let name = self.consume_ident("Expect class name.")?.clone();
         let superclass = if self
             .tokens
             .next_if(|t| t.token_type == TokenType::Less)
             .is_some()
         {
-            let next_t = self.tokens.peek().unwrap();
-            if let TokenType::Identifier(_) = &next_t.token_type {
-                Some(VariableExpr::new(self.tokens.next().unwrap().clone()))
-            } else {
-                return Err(ParseErrorCause::new(
-                    next_t.line,
-                    Some(next_t.lexeme.clone()),
-                    "Expect superclass name.",
-                ));
-            }
+            let name_t = self.consume_ident("Expect superclass name.")?;
+            Some(VariableExpr::new(name_t.clone()))
         } else {
             None
         };
@@ -107,38 +87,14 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
 
         Ok(Stmt::Class(Box::new(ClassStmt::new(
-            name.clone(),
-            methods,
-            superclass,
+            name, methods, superclass,
         ))))
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, ParseErrorCause> {
-        let name = {
-            let t = self.tokens.peek().unwrap();
-            if let TokenType::Identifier(_) = &t.token_type {
-                self.tokens.next().unwrap()
-            } else if let TokenType::Eof = &t.token_type {
-                // TODO: unreachable?
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect variable name.",
-                ));
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    "Expect variable name.",
-                ));
-            }
-        };
-
-        // TODO: Can be cleaned up into one loop?
+        let name = self.consume_ident("Expect variable name.")?.clone();
         let initializer = {
-            let t = self.tokens.peek().unwrap();
-            if t.token_type == TokenType::Equal {
-                self.tokens.next();
+            if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Equal) {
                 Some(self.expression()?)
             } else {
                 None
@@ -150,7 +106,7 @@ impl<'a> Parser<'a> {
             "Expect ';' after variable declaration.",
         )?;
 
-        Ok(Stmt::Var(Box::new(VarStmt::new(name.clone(), initializer))))
+        Ok(Stmt::Var(Box::new(VarStmt::new(name, initializer))))
     }
 
     fn statement(&mut self) -> Result<Stmt, ParseErrorCause> {
@@ -176,7 +132,6 @@ impl<'a> Parser<'a> {
             TokenType::LeftBrace => {
                 self.tokens.next();
                 let s = self.block()?;
-                // TODO: Check this new
                 Ok(Stmt::Block(Box::new(BlockStmt::new(s))))
             }
             _ => self.expression_statement(),
@@ -210,8 +165,7 @@ impl<'a> Parser<'a> {
 
         // Either there is a condition or it an infinite loop (true)
         let condition = {
-            let t = self.tokens.peek().unwrap();
-            if t.token_type != TokenType::Semicolon {
+            if self.tokens.peek().unwrap().token_type != TokenType::Semicolon {
                 self.expression()?
             } else {
                 Expr::Literal(Literal::Boolean(true))
@@ -221,8 +175,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::Semicolon, "Expect ';' after loop condition.")?;
 
         let increment = {
-            let t = self.tokens.peek().unwrap();
-            if t.token_type != TokenType::RightParen {
+            if self.tokens.peek().unwrap().token_type != TokenType::RightParen {
                 Some(self.expression()?)
             } else {
                 None
@@ -275,7 +228,6 @@ impl<'a> Parser<'a> {
     fn print_statement(&mut self) -> Result<Stmt, ParseErrorCause> {
         let value = self.expression()?;
         self.consume(TokenType::Semicolon, "Expect ';' after expression.")?;
-        // TODO: Don't think this needs to be boxed
         Ok(Stmt::Print(Box::new(PrintStmt::new(value))))
     }
 
@@ -305,37 +257,17 @@ impl<'a> Parser<'a> {
     }
 
     fn function(&mut self, kind: &str) -> Result<Stmt, ParseErrorCause> {
-        let name = {
-            let t = self.tokens.peek().unwrap();
-            if let TokenType::Identifier(_) = &t.token_type {
-                self.tokens.next().unwrap()
-            } else {
-                return Err(ParseErrorCause::new(
-                    t.line,
-                    Some(t.lexeme.clone()),
-                    &format!("Expect {kind} name."),
-                ));
-            }
-        };
-
+        let name = self.consume_ident(&format!("Expect {kind} name."))?.clone();
         self.consume(
             TokenType::LeftParen,
             &format!("Expect '(' after {kind} name."),
         )?;
 
         let mut params = Vec::new();
-        let t = &(*self.tokens.peek().unwrap()).clone();
+        let t = *self.tokens.peek().unwrap();
         if t.token_type != TokenType::RightParen {
             loop {
-                let p = if let TokenType::Identifier(_) = &t.token_type {
-                    self.tokens.next().unwrap().clone()
-                } else {
-                    return Err(ParseErrorCause::new(
-                        t.line,
-                        Some(t.lexeme.clone()),
-                        "Expect parameter name.",
-                    ));
-                };
+                let p = self.consume_ident("Expect parameter name.")?.clone();
                 if params.len() >= 255 {
                     return Err(ParseErrorCause::new(
                         p.line,
@@ -361,9 +293,7 @@ impl<'a> Parser<'a> {
         let body = self.block()?;
 
         Ok(Stmt::Function(Rc::new(FunctionStmt::new(
-            name.clone(),
-            params,
-            body,
+            name, params, body,
         ))))
     }
 
@@ -539,17 +469,8 @@ impl<'a> Parser<'a> {
                 expr = self.finish_call(expr)?;
             } else if t.token_type == TokenType::Dot {
                 self.tokens.next();
-                let t = self.tokens.peek().unwrap();
-                if let TokenType::Identifier(_) = &t.token_type {
-                    let name = self.tokens.next().unwrap();
-                    expr = Expr::Get(Rc::new(GetExpr::new(name.clone(), expr)));
-                } else {
-                    return Err(ParseErrorCause::new(
-                        t.line,
-                        Some(t.lexeme.clone()),
-                        "Expect property name after '.'.",
-                    ));
-                }
+                let name = self.consume_ident("Expect property name after '.'.")?;
+                expr = Expr::Get(Rc::new(GetExpr::new(name.clone(), expr)));
             } else {
                 break;
             }
@@ -561,7 +482,7 @@ impl<'a> Parser<'a> {
     fn finish_call(&mut self, callee: Expr) -> Result<Expr, ParseErrorCause> {
         let mut arguments = Vec::new();
 
-        let t = &(*self.tokens.peek().unwrap()).clone();
+        let t = *self.tokens.peek().unwrap();
         if t.token_type != TokenType::RightParen {
             // Do-while
             arguments.push(self.expression()?);
@@ -601,19 +522,7 @@ impl<'a> Parser<'a> {
             TokenType::Super => {
                 let keyword = t;
                 self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
-                let method = {
-                    let t = self.tokens.peek().unwrap();
-                    if let TokenType::Identifier(_) = &t.token_type {
-                        self.tokens.next().unwrap()
-                    } else {
-                        return Err(ParseErrorCause::new(
-                            t.line,
-                            Some(t.lexeme.clone()),
-                            "Expect superclass method name.",
-                        ));
-                    }
-                };
-
+                let method = self.consume_ident("Expect superclass method name.")?;
                 Ok(Expr::Super(Rc::new(SuperExpr::new(
                     keyword.clone(),
                     method.clone(),
@@ -657,6 +566,19 @@ impl<'a> Parser<'a> {
     fn consume(&mut self, ttype: TokenType, message: &str) -> Result<&Token, ParseErrorCause> {
         let t = self.tokens.peek().unwrap();
         if t.token_type == ttype {
+            Ok(self.tokens.next().unwrap())
+        } else {
+            Err(ParseErrorCause::new(
+                t.line,
+                Some(t.lexeme.clone()),
+                message,
+            ))
+        }
+    }
+
+    fn consume_ident(&mut self, message: &str) -> Result<&Token, ParseErrorCause> {
+        let t = self.tokens.peek().unwrap();
+        if let TokenType::Identifier(_) = &t.token_type {
             Ok(self.tokens.next().unwrap())
         } else {
             Err(ParseErrorCause::new(

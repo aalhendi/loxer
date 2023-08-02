@@ -4,7 +4,7 @@ use crate::{
 };
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Block(Box<BlockStmt>),
     Class(Box<ClassStmt>),
@@ -17,7 +17,7 @@ pub enum Stmt {
     While(Box<WhileStmt>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct BlockStmt {
     pub statements: Vec<Stmt>,
 }
@@ -28,7 +28,7 @@ impl BlockStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ClassStmt {
     pub name: Token,
     pub superclass: Option<VariableExpr>,
@@ -45,7 +45,7 @@ impl ClassStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ExpressionStmt {
     pub expression: Expr,
 }
@@ -56,7 +56,7 @@ impl ExpressionStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct FunctionStmt {
     pub name: Token,
     pub params: Vec<Token>,
@@ -69,7 +69,7 @@ impl FunctionStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Stmt,
@@ -86,7 +86,7 @@ impl IfStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct PrintStmt {
     pub expression: Expr,
 }
@@ -97,7 +97,7 @@ impl PrintStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ReturnStmt {
     pub keyword: Token,
     pub value: Option<Expr>,
@@ -109,7 +109,7 @@ impl ReturnStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct VarStmt {
     pub name: Token,
     pub initializer: Option<Expr>,
@@ -121,7 +121,7 @@ impl VarStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Stmt,

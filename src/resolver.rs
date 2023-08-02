@@ -1,7 +1,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    expr::Expr,
+    expr::{Expr, ExprId},
     interpreter::Interpreter,
     lox_result::{LoxResult, ParseErrorCause},
     stmt::{FunctionStmt, Stmt},
@@ -148,7 +148,7 @@ impl<'a> Resolver<'a> {
         match expr {
             Expr::Assign(e) => {
                 self.resolve_expr(&e.value);
-                self.resolve_local(expr, &e.name);
+                self.resolve_local(e.id, &e.name);
             }
             Expr::Binary(e) => {
                 self.resolve_expr(&e.left);
@@ -188,14 +188,14 @@ impl<'a> Resolver<'a> {
                         "Can't use 'super' in a class with no superclass.",
                     );
                 }
-                ClassType::Subclass => self.resolve_local(expr, &e.keyword),
+                ClassType::Subclass => self.resolve_local(e.id, &e.keyword),
             },
             Expr::This(e) => {
                 if matches!(self.current_class, ClassType::None) {
                     self.error(&e.keyword, "Can't use 'this' outside of a class.");
                     return;
                 }
-                self.resolve_local(expr, &e.keyword);
+                self.resolve_local(e.id, &e.keyword);
             }
             Expr::Unary(e) => self.resolve_expr(&e.right),
             Expr::Variable(e) => {
@@ -204,7 +204,7 @@ impl<'a> Resolver<'a> {
                         self.error(&e.name, "Can't read local variable in its own initializer.");
                     }
                 }
-                self.resolve_local(expr, &e.name);
+                self.resolve_local(e.id, &e.name);
             }
         }
     }
@@ -250,10 +250,11 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_local(&mut self, expr: &Expr, name: &Token) {
+    fn resolve_local(&mut self, expr: ExprId, name: &Token) {
         for (idx, scope) in self.scopes.iter().rev().enumerate() {
             if scope.contains_key(&name.lexeme) {
-                self.interpreter.resolve(expr, idx);
+                self.interpreter.resolve(&expr, idx);
+                return;
             }
         }
     }

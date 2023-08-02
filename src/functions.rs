@@ -58,7 +58,7 @@ pub struct LoxFunction {
 
 impl PartialEq for LoxFunction {
     fn eq(&self, other: &Self) -> bool {
-        self.declaration == other.declaration
+        Rc::ptr_eq(&self.declaration, &other.declaration)
             && Rc::ptr_eq(&self.closure, &other.closure)
             && self.is_initializer == other.is_initializer
     }

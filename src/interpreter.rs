@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     environment::Environment,
-    expr::{Expr, Literal, LoxCallable},
+    expr::{Expr, ExprId, Literal, LoxCallable},
     functions::{Clock, LoxFunction, LoxNative},
     lox_class::LoxClass,
     lox_result::LoxResult,
@@ -11,19 +11,21 @@ use crate::{
 };
 
 pub struct Interpreter {
-    pub environment: Rc<RefCell<Environment>>,
-    locals: HashMap<Expr, usize>,
+    environment: Rc<RefCell<Environment>>,
+    globals: Rc<RefCell<Environment>>,
+    locals: HashMap<usize, usize>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        let mut environment = Environment::new(None);
+        let globals = Rc::new(RefCell::new(Environment::new(None)));
 
         let clock = Literal::NativeFunction(LoxNative(Rc::new(Clock) as Rc<dyn LoxCallable>));
-        environment.define("clock", clock);
+        globals.borrow_mut().define("clock", clock);
 
         Self {
-            environment: Rc::new(RefCell::new(environment)),
+            globals: Rc::clone(&globals),
+            environment: Rc::clone(&globals),
             locals: HashMap::new(),
         }
     }
@@ -138,8 +140,8 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn resolve(&mut self, expr: &Expr, depth: usize) {
-        self.locals.insert(expr.clone(), depth);
+    pub fn resolve(&mut self, expr: &ExprId, depth: usize) {
+        self.locals.insert(expr.0, depth);
     }
 
     pub fn execute_block(
@@ -301,16 +303,14 @@ impl Interpreter {
             Expr::Variable(e) => self.look_up_variable(&e.name, expr),
             Expr::Assign(e) => {
                 let value = self.evaluate(&e.value)?;
-                if let Some(distance) = self.locals.get(expr) {
+                if let Some(distance) = self.locals.get(&e.id.0) {
                     self.environment.borrow_mut().assign_at(
                         distance,
                         &e.name.lexeme,
                         value.clone(),
                     )?;
                 } else {
-                    self.environment
-                        .borrow_mut()
-                        .assign(&e.name, value.clone())?;
+                    self.globals.borrow_mut().assign(&e.name, value.clone())?;
                 }
                 Ok(value)
             }
@@ -362,7 +362,7 @@ impl Interpreter {
                 }
             }
             Expr::Super(e) => {
-                let distance = self.locals.get(expr).unwrap();
+                let distance = self.locals.get(&e.id.0).unwrap();
                 let superclass = match self.environment.borrow().get_at(distance, "super")? {
                     Literal::Class(c) => c,
                     _ => todo!("unreachable, must be a class"),
@@ -387,18 +387,18 @@ impl Interpreter {
 
     fn look_up_variable(&self, name: &Token, expr: &Expr) -> Result<Literal, LoxResult> {
         match expr {
-            Expr::This(_) => {
-                if let Some(distance) = self.locals.get(expr) {
+            Expr::This(e) => {
+                if let Some(distance) = self.locals.get(&e.id.0) {
                     self.environment.borrow().get_at(distance, &name.lexeme)
                 } else {
-                    self.environment.borrow().get(name)
+                    self.globals.borrow().get(name)
                 }
             }
-            Expr::Variable(_) => {
-                if let Some(distance) = self.locals.get(expr) {
+            Expr::Variable(e) => {
+                if let Some(distance) = self.locals.get(&e.id.0) {
                     self.environment.borrow().get_at(distance, &name.lexeme)
                 } else {
-                    self.environment.borrow().get(name)
+                    self.globals.borrow().get(name)
                 }
             }
             _ => unreachable!("Only This and Variable exprs call this function"),

@@ -1,7 +1,7 @@
 use crate::{
     expr::{
-        AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, GetExpr, GroupingExpr, Literal,
-        LogicalExpr, SetExpr, SuperExpr, ThisExpr, UnaryExpr, VariableExpr,
+        AssignExpr, BinaryExpr, CallExpr, ConditionalExpr, Expr, ExprId, GetExpr, GroupingExpr,
+        Literal, LogicalExpr, SetExpr, SuperExpr, ThisExpr, UnaryExpr, VariableExpr,
     },
     lox_result::{LoxResult, ParseErrorCause},
     stmt::{
@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
         if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Var) {
             self.var_declaration()
         } else if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Fun) {
-            return self.function("function");
+            self.function("function")
         } else if let Some(_t) = self.tokens.next_if(|t| t.token_type == TokenType::Class) {
             self.class_declaration()
         } else {
@@ -69,7 +69,7 @@ impl<'a> Parser<'a> {
             .is_some()
         {
             let name_t = self.consume_ident("Expect superclass name.")?;
-            Some(VariableExpr::new(name_t.clone()))
+            Some(VariableExpr::new(name_t.clone(), ExprId::new()))
         } else {
             None
         };
@@ -342,6 +342,7 @@ impl<'a> Parser<'a> {
                         return Ok(Expr::Assign(Rc::new(AssignExpr::new(
                             s.name.clone(),
                             value,
+                            ExprId::new(),
                         ))));
                     }
                     Expr::Get(e) => {
@@ -518,7 +519,7 @@ impl<'a> Parser<'a> {
             TokenType::Nil => Ok(Expr::Literal(Literal::Nil)),
             TokenType::String(s) => Ok(Expr::Literal(Literal::String(s.to_string()))),
             TokenType::Number(n) => Ok(Expr::Literal(Literal::Number(*n))),
-            TokenType::This => Ok(Expr::This(Rc::new(ThisExpr::new(t.clone())))),
+            TokenType::This => Ok(Expr::This(Rc::new(ThisExpr::new(t.clone(), ExprId::new())))),
             TokenType::Super => {
                 let keyword = t;
                 self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
@@ -526,6 +527,7 @@ impl<'a> Parser<'a> {
                 Ok(Expr::Super(Rc::new(SuperExpr::new(
                     keyword.clone(),
                     method.clone(),
+                    ExprId::new(),
                 ))))
             }
             TokenType::LeftParen => {
@@ -533,7 +535,10 @@ impl<'a> Parser<'a> {
                 self.consume(TokenType::RightParen, "Expect ')' after expression")?;
                 Ok(Expr::Grouping(Rc::new(GroupingExpr::new(expr))))
             }
-            TokenType::Identifier(_) => Ok(Expr::Variable(Rc::new(VariableExpr::new(t.clone())))),
+            TokenType::Identifier(_) => Ok(Expr::Variable(Rc::new(VariableExpr::new(
+                t.clone(),
+                ExprId::new(),
+            )))),
             _ => Err(ParseErrorCause::new(
                 t.line,
                 Some(t.lexeme.clone()),

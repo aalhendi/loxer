@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::hash::Hash;
 use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
 
 #[derive(Clone, PartialEq)]
 pub enum Literal {
@@ -18,25 +19,14 @@ pub enum Literal {
     Instance(Rc<RefCell<LoxInstance>>),
 }
 
-// impl Hash for Literal {
-//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-//         match self {
-//             Literal::Identifier(v) => v.hash(state),
-//             Literal::Boolean(v) => v.hash(state),
-//             Literal::Nil => 0u8.hash(state),
-//             Literal::String(v) => v.hash(state),
-//             Literal::Number(v) => if v.is_nan() { f64::NAN } else { *v }.to_bits().hash(state),
-//             Literal::Function(v) => ptr_hash(v, state),
-//             Literal::NativeFunction(ty, _) => ty.hash(state),
-//             Literal::Class(v) => v.hash(state),
-//             Literal::Instance(v) => v.borrow().hash(state),
-//         }
-//     }
-// }
-
-// TODO: Verify
-impl Eq for Literal {
-    fn assert_receiver_is_total_eq(&self) {}
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+// NOTE: Global state
+pub struct ExprId(pub usize);
+static ID_SEQ: AtomicUsize = AtomicUsize::new(0);
+impl ExprId {
+    pub fn new() -> Self {
+        Self(ID_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
+    }
 }
 
 impl core::fmt::Debug for Literal {
@@ -73,23 +63,6 @@ impl Display for Literal {
     }
 }
 
-// impl PartialEq for Literal {
-//     fn eq(&self, other: &Self) -> bool {
-//         match (self, other) {
-//             (Self::Identifier(l0), Self::Identifier(r0)) => l0 == r0,
-//             (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
-//             (Self::String(l0), Self::String(r0)) => l0 == r0,
-//             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
-//             (Self::Function(l0), Self::Function(r0)) => std::ptr::eq(l0.as_ref(), r0.as_ref()),
-//             (Self::Nil, Self::Nil) => true,
-//             (Self::NativeFunction(ty0, _), Self::NativeFunction(ty1, _)) => ty0 == ty1,
-//             (Self::Class(l0), Self::Class(r0)) => l0.name == r0.name,
-//             (Self::Instance(l0), Self::Instance(r0)) => l0 == r0,
-//             _ => false,
-//         }
-//     }
-// }
-
 pub trait LoxCallable {
     fn call(
         &self,
@@ -100,7 +73,7 @@ pub trait LoxCallable {
     fn to_string(&self) -> String;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Assign(Rc<AssignExpr>),
     Binary(Rc<BinaryExpr>),
@@ -115,32 +88,6 @@ pub enum Expr {
     This(Rc<ThisExpr>),
     Unary(Rc<UnaryExpr>),
     Variable(Rc<VariableExpr>),
-}
-
-fn ptr_hash<T: Debug, H: std::hash::Hasher>(v: &T, state: &mut H) {
-    let ptr = v as *const _ as usize;
-    // println!("{v:?} {ptr:?}");
-    ptr.hash(state)
-}
-
-impl Hash for Expr {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            Expr::Assign(v) => ptr_hash(v, state),
-            Expr::Binary(v) => ptr_hash(v, state),
-            Expr::Call(v) => ptr_hash(v, state),
-            Expr::Conditional(v) => ptr_hash(v, state),
-            Expr::Get(v) => ptr_hash(v, state),
-            Expr::Grouping(v) => ptr_hash(v, state),
-            Expr::Literal(v) => ptr_hash(v, state),
-            Expr::Logical(v) => ptr_hash(v, state),
-            Expr::Set(v) => ptr_hash(v, state),
-            Expr::Super(v) => v.hash(state),
-            Expr::This(v) => ptr_hash(v, state),
-            Expr::Unary(v) => ptr_hash(v, state),
-            Expr::Variable(v) => ptr_hash(v, state),
-        }
-    }
 }
 
 // NOTE: This is used to display reverse Polish notation (RPN)
@@ -168,7 +115,7 @@ impl Display for Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpr {
     pub left: Expr,
     pub operator: Token,
@@ -200,7 +147,7 @@ impl Display for BinaryExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct CallExpr {
     pub callee: Expr,
     pub paren: Token,
@@ -231,7 +178,7 @@ impl CallExpr {
 //     }
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ConditionalExpr {
     pub condition: Expr,
     pub left: Expr,
@@ -262,7 +209,7 @@ impl Display for ConditionalExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct GroupingExpr {
     pub expression: Expr,
 }
@@ -284,7 +231,7 @@ impl Display for GroupingExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct LogicalExpr {
     pub left: Expr,
     pub operator: Token,
@@ -316,7 +263,7 @@ impl Display for LogicalExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Expr,
@@ -339,14 +286,15 @@ impl Display for UnaryExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct VariableExpr {
     pub name: Token,
+    pub id: ExprId,
 }
 
 impl VariableExpr {
-    pub fn new(name: Token) -> Self {
-        Self { name }
+    pub fn new(name: Token, id: ExprId) -> Self {
+        Self { name, id }
     }
 }
 
@@ -356,15 +304,16 @@ impl Display for VariableExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct AssignExpr {
     pub name: Token,
     pub value: Expr,
+    pub id: ExprId,
 }
 
 impl AssignExpr {
-    pub fn new(name: Token, value: Expr) -> Self {
-        Self { name, value }
+    pub fn new(name: Token, value: Expr, id: ExprId) -> Self {
+        Self { name, value, id }
     }
 }
 
@@ -374,7 +323,7 @@ impl Display for AssignExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct GetExpr {
     pub object: Expr,
     pub name: Token,
@@ -392,7 +341,7 @@ impl Display for GetExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct SetExpr {
     pub object: Expr,
     pub name: Token,
@@ -415,14 +364,15 @@ impl Display for SetExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct ThisExpr {
     pub keyword: Token,
+    pub id: ExprId,
 }
 
 impl ThisExpr {
-    pub fn new(keyword: Token) -> Self {
-        Self { keyword }
+    pub fn new(keyword: Token, id: ExprId) -> Self {
+        Self { keyword, id }
     }
 }
 
@@ -432,15 +382,20 @@ impl Display for ThisExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct SuperExpr {
     pub keyword: Token,
     pub method: Token,
+    pub id: ExprId,
 }
 
 impl SuperExpr {
-    pub fn new(keyword: Token, method: Token) -> Self {
-        Self { keyword, method }
+    pub fn new(keyword: Token, method: Token, id: ExprId) -> Self {
+        Self {
+            keyword,
+            method,
+            id,
+        }
     }
 }
 

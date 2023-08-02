@@ -263,11 +263,7 @@ impl Scanner<'_> {
                     )),
                 }
             }
-            _ => self.errors.push(ParseErrorCause::new(
-                self.line,
-                None,
-                "Unexpected character.",
-            )),
+            _ => eprintln!("[line {}] Error: Unexpected character.", self.line),
         }
     }
 

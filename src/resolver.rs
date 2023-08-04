@@ -96,7 +96,7 @@ impl<'a> Resolver<'a> {
                             };
                             self.resolve_function(f, declaration);
                         }
-                        _ => todo!(),
+                        _ => unreachable!("Only function statements are stored in class statement methods field."),
                     }
                 }
                 self.end_scope();

@@ -58,93 +58,23 @@ impl Scanner<'_> {
         ]);
 
         match ch {
-            '(' => self
-                .tokens
-                .push(Token::new(TokenType::LeftParen, ch.to_string(), self.line)),
-            ')' => self
-                .tokens
-                .push(Token::new(TokenType::RightParen, ch.to_string(), self.line)),
-            '{' => self
-                .tokens
-                .push(Token::new(TokenType::LeftBrace, ch.to_string(), self.line)),
-            '}' => self
-                .tokens
-                .push(Token::new(TokenType::RightBrace, ch.to_string(), self.line)),
-            ',' => self
-                .tokens
-                .push(Token::new(TokenType::Comma, ch.to_string(), self.line)),
-            '.' => self
-                .tokens
-                .push(Token::new(TokenType::Dot, ch.to_string(), self.line)),
-            '-' => self
-                .tokens
-                .push(Token::new(TokenType::Minus, ch.to_string(), self.line)),
-            '+' => self
-                .tokens
-                .push(Token::new(TokenType::Plus, ch.to_string(), self.line)),
+            '(' => self.push_token(TokenType::LeftParen, ch),
+            ')' => self.push_token(TokenType::RightParen, ch),
+            '{' => self.push_token(TokenType::LeftBrace, ch),
+            '}' => self.push_token(TokenType::RightBrace, ch),
+            ',' => self.push_token(TokenType::Comma, ch),
+            '.' => self.push_token(TokenType::Dot, ch),
+            '-' => self.push_token(TokenType::Minus, ch),
+            '+' => self.push_token(TokenType::Plus, ch),
             // TODO: Colons are discarded, should they err if used without `?`
-            ':' => self
-                .tokens
-                .push(Token::new(TokenType::Colon, ch.to_string(), self.line)),
-            ';' => self
-                .tokens
-                .push(Token::new(TokenType::Semicolon, ch.to_string(), self.line)),
-            '*' => self
-                .tokens
-                .push(Token::new(TokenType::Star, ch.to_string(), self.line)),
-            '?' => self.tokens.push(Token::new(
-                TokenType::QuestionMark,
-                ch.to_string(),
-                self.line,
-            )),
-            '!' => {
-                if let Some(c) = self.source.next_if_eq(&'=') {
-                    self.tokens.push(Token::new(
-                        TokenType::BangEqual,
-                        String::from_iter([ch, c]),
-                        self.line,
-                    ))
-                } else {
-                    self.tokens
-                        .push(Token::new(TokenType::Bang, ch.to_string(), self.line))
-                }
-            }
-            '=' => {
-                if let Some(c) = self.source.next_if_eq(&'=') {
-                    self.tokens.push(Token::new(
-                        TokenType::EqualEqual,
-                        String::from_iter([ch, c]),
-                        self.line,
-                    ))
-                } else {
-                    self.tokens
-                        .push(Token::new(TokenType::Equal, ch.to_string(), self.line))
-                }
-            }
-            '<' => {
-                if let Some(c) = self.source.next_if_eq(&'=') {
-                    self.tokens.push(Token::new(
-                        TokenType::LessEqual,
-                        String::from_iter([ch, c]),
-                        self.line,
-                    ))
-                } else {
-                    self.tokens
-                        .push(Token::new(TokenType::Less, ch.to_string(), self.line))
-                }
-            }
-            '>' => {
-                if let Some(c) = self.source.next_if_eq(&'=') {
-                    self.tokens.push(Token::new(
-                        TokenType::GreaterEqual,
-                        String::from_iter([ch, c]),
-                        self.line,
-                    ))
-                } else {
-                    self.tokens
-                        .push(Token::new(TokenType::Greater, ch.to_string(), self.line))
-                }
-            }
+            ':' => self.push_token(TokenType::Colon, ch),
+            ';' => self.push_token(TokenType::Semicolon, ch),
+            '*' => self.push_token(TokenType::Star, ch),
+            '?' => self.push_token(TokenType::QuestionMark, ch),
+            '!' => self.push_token_ch_eq(TokenType::Bang, TokenType::BangEqual, ch),
+            '=' => self.push_token_ch_eq(TokenType::Equal, TokenType::EqualEqual, ch),
+            '<' => self.push_token_ch_eq(TokenType::Less, TokenType::LessEqual, ch),
+            '>' => self.push_token_ch_eq(TokenType::Greater, TokenType::GreaterEqual, ch),
             '/' => {
                 // Comment. ignore lexeme
                 if self.source.next_if_eq(&'/').is_some() {
@@ -165,8 +95,7 @@ impl Scanner<'_> {
                         ))
                     }
                 } else {
-                    self.tokens
-                        .push(Token::new(TokenType::Slash, ch.to_string(), self.line))
+                    self.push_token(TokenType::Slash, ch)
                 }
             }
             ' ' | '\r' | '\t' => {
@@ -175,35 +104,7 @@ impl Scanner<'_> {
             '\n' => {
                 self.line += 1;
             }
-            '"' => {
-                // TODO: Handle escape sequences
-                let mut lexeme = Vec::new(); // reset text to trim first quote
-                let mut is_term = false;
-                for next_ch in self.source.by_ref() {
-                    if next_ch == '"' {
-                        is_term = true;
-                        break;
-                    } else if next_ch == '\n' {
-                        self.line += 1;
-                    }
-                    lexeme.push(next_ch);
-                }
-                if is_term {
-                    let lexeme = String::from_iter(lexeme);
-                    // TODO: Does this need to be in 2 places?
-                    self.tokens.push(Token::new(
-                        TokenType::String(lexeme.clone()),
-                        lexeme,
-                        self.line,
-                    ))
-                } else {
-                    self.errors.push(ParseErrorCause::new(
-                        self.line,
-                        None,
-                        "Unterminated string.",
-                    ))
-                }
-            }
+            '"' => self.scan_string(),
             _ if ch.is_ascii_digit() => {
                 let mut char_num = vec![ch];
                 while let Some(next_ch) = self.source.next_if(|next_ch| next_ch.is_ascii_digit()) {
@@ -231,11 +132,7 @@ impl Scanner<'_> {
                         _ => {
                             // Add the number, add the consumed dot as token
                             self.push_num(&char_num);
-                            return self.tokens.push(Token::new(
-                                TokenType::Dot,
-                                ".".to_string(),
-                                self.line,
-                            ));
+                            return self.push_token(TokenType::Dot, '.');
                         }
                     }
                 }
@@ -257,13 +154,44 @@ impl Scanner<'_> {
                 match t_type {
                     Some(t) => self.tokens.push(Token::new(t.clone(), lexeme, self.line)),
                     None => self.tokens.push(Token::new(
-                        TokenType::Identifier(lexeme.clone()),
+                        TokenType::Identifier,
                         lexeme,
                         self.line,
                     )),
                 }
             }
             _ => eprintln!("[line {}] Error: Unexpected character.", self.line),
+        }
+    }
+
+    fn scan_string(&mut self) {
+        // TODO: Handle escape sequences
+        let mut lexeme = Vec::new();
+        // reset text to trim first quote
+        let mut is_term = false;
+        for next_ch in self.source.by_ref() {
+            if next_ch == '"' {
+                is_term = true;
+                break;
+            } else if next_ch == '\n' {
+                self.line += 1;
+            }
+            lexeme.push(next_ch);
+        }
+        if is_term {
+            let lexeme = String::from_iter(lexeme);
+            // TODO: Does this need to be in 2 places?
+            self.tokens.push(Token::new(
+                TokenType::String(lexeme.clone()),
+                lexeme,
+                self.line,
+            ))
+        } else {
+            self.errors.push(ParseErrorCause::new(
+                self.line,
+                None,
+                "Unterminated string.",
+            ))
         }
     }
 
@@ -295,6 +223,20 @@ impl Scanner<'_> {
         }
         Err(())
     }
+
+    fn push_token(&mut self, ttype: TokenType, ch: char) {
+        self.tokens
+            .push(Token::new(ttype, ch.to_string(), self.line))
+    }
+
+    fn push_token_ch_eq(&mut self, ttype1: TokenType, ttype2: TokenType, ch: char) {
+        if let Some(c) = self.source.next_if_eq(&'=') {
+            self.tokens
+                .push(Token::new(ttype2, String::from_iter([ch, c]), self.line))
+        } else {
+            self.push_token(ttype1, ch)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -315,8 +257,8 @@ fn test_bool() {
         vec![
             &TokenType::True,
             &TokenType::False,
-            &TokenType::Identifier("True".to_owned()),
-            &TokenType::Identifier("False".to_owned()),
+            &TokenType::Identifier,
+            &TokenType::Identifier,
             &TokenType::Eof,
         ]
     );
@@ -342,10 +284,10 @@ fn test_number() {
             &TokenType::Number(100.01),
             &TokenType::Number(0.00),
             &TokenType::Number(100.00),
-            &TokenType::Identifier("d".to_owned()),
+            &TokenType::Identifier,
             &TokenType::Number(100.00),
             &TokenType::Dot,
-            &TokenType::Identifier("d".to_owned()),
+            &TokenType::Identifier,
             &TokenType::Number(100.00),
             &TokenType::Dot,
             &TokenType::Eof,

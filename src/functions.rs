@@ -36,7 +36,7 @@ impl LoxCallable for Clock {
     ) -> Result<Literal, LoxResult> {
         match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
             Ok(n) => Ok(Literal::Number(n.as_secs_f64())),
-            Err(_) => todo!(),
+            Err(e) => panic!("{e}"),
         }
     }
 
@@ -91,8 +91,6 @@ impl LoxFunction {
 }
 
 impl LoxCallable for LoxFunction {
-    // TODO: Simplify environment refs?
-    // author does Environment environment = new Environment(interpreter.globals); {java}
     fn call(
         &self,
         interpreter: &mut Interpreter,

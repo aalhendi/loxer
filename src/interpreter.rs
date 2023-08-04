@@ -80,7 +80,7 @@ impl Interpreter {
                             )));
                             methods.insert(f.name.lexeme.clone(), function);
                         }
-                        _ => unreachable!("I think"), // TODO: Validate
+                        _ => unreachable!("Only function statements are stored in class statement methods field."),
                     }
                 }
                 if superclass.is_some() {
@@ -149,8 +149,7 @@ impl Interpreter {
         statements: &[Stmt],
         environment: Rc<RefCell<Environment>>,
     ) -> Result<(), LoxResult> {
-        let previous = self.environment.clone();
-        self.environment = environment;
+        let previous = std::mem::replace(&mut self.environment, environment);
         let result = statements.iter().try_for_each(|s| self.execute(s));
 
         self.environment = previous;
@@ -365,11 +364,11 @@ impl Interpreter {
                 let distance = self.locals.get(&e.id.0).unwrap();
                 let superclass = match self.environment.borrow().get_at(distance, "super")? {
                     Literal::Class(c) => c,
-                    _ => todo!("unreachable, must be a class"),
+                    _ => unreachable!("Only classes are stored as 'super'."),
                 };
                 let object = match self.environment.borrow().get_at(&(distance - 1), "this")? {
                     Literal::Instance(i) => i,
-                    _ => todo!("unreachable, must be an instance"),
+                    _ => unreachable!("Only instances stored as 'this'."),
                 };
                 let method = superclass.find_method(&e.method.lexeme);
                 if let Some(Literal::Function(m)) = method {
